@@ -1,6 +1,6 @@
 const projects=[
-  {id:'azabu',name:'麻布歯科',sub:'Azabu Dental Clinic',mark:'麻'},
-  {id:'imai',name:'今井歯科',sub:'Imai Dental Clinic',mark:'今'},
+  {id:'azabu',name:'日本インプラント',sub:'Japan Implant',mark:'日'},
+  {id:'imai',name:'明治安田生命',sub:'Meijiyasuda Seimei',mark:'明'},
   {id:'tegy',name:'TEGY',sub:'Internal Project',mark:'T'},
   {id:'demo',name:'Demo Project',sub:'Test & Explore',mark:'D'}
 ];
