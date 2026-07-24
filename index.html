@@ -13,9 +13,7 @@
 <body>
   <div class="app" id="app">
     <aside class="sidebar" id="sidebar" aria-label="Projects">
-      <div class="sidebar-brand">
-        <img src="./assets/tegy-logo.png" alt="TEGY" />
-      </div>
+      <div class="sidebar-brand"><img src="./tegy-logo.png" alt="TEGY" /></div>
       <button class="new-project" id="newProjectBtn"><span>＋</span> New Project</button>
       <p class="section-label">PROJECTS</p>
       <div class="project-list" id="projectList"></div>
@@ -28,8 +26,7 @@
         <button data-add-agent="Image Agent"><i class="violet">▧</i><span>Image Agent</span></button>
       </div>
       <div class="sidebar-footer">
-        <button>⚙ Settings</button>
-        <button>ⓘ Help</button>
+        <button>⚙ Settings</button><button>ⓘ Help</button>
         <div class="profile"><span class="avatar">M</span><div><strong>Mina Rho</strong><small>TEGY Creative Team</small></div></div>
       </div>
     </aside>
@@ -51,7 +48,12 @@
         <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div><div class="ambient ambient-c"></div>
         <div class="orbit orbit-a"></div><div class="orbit orbit-b"></div>
         <span class="particle p1"></span><span class="particle p2"></span><span class="particle p3"></span><span class="particle p4"></span><span class="particle p5"></span>
-        <img class="hero-logo" src="./assets/tegy-logo.png" alt="TEGY" />
+        <div class="hero-brand" aria-label="TEGY Creative Intelligence Canvas">
+          <img class="hero-logo" src="./tegy-logo-horizontal.png" alt="TEGY" />
+          <div class="hero-subtitle">Creative Intelligence Canvas</div>
+          <div class="hero-divider"></div>
+          <div class="hero-tagline">AIと一緒に、アイデアをカタチに。</div>
+        </div>
         <div class="collapsed-projects" id="collapsedProjects"></div>
       </section>
 
@@ -66,7 +68,7 @@
 
       <section class="chat-panel" id="chatPanel">
         <div class="chat-orb"><span></span><span></span></div>
-        <div class="chat-copy"><strong id="chatTitle">こんにちは、Minaさん 👋</strong><p id="chatSubtitle">今日は何を創りましょうか？</p></div>
+        <div class="chat-copy"><strong id="chatTitle">こんにちは、Minaさん </strong><p id="chatSubtitle">今日は何を創りましょうか？</p></div>
         <div class="suggestions"><button>⚡ 次のステップを提案</button><button>▥ 競合を分析する</button><button>✎ アイデアを広げる</button></div>
         <form id="chatForm"><input id="chatInput" placeholder="AIに指示を出すか、質問してください..." /><button type="submit">↑</button></form>
       </section>
