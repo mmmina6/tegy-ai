@@ -70,26 +70,30 @@
         <div class="chat-orb"><span></span><span></span></div>
         <div class="chat-copy"><strong id="chatTitle">こんにちは、Minaさん </strong><p id="chatSubtitle">今日は何を創りましょうか？</p></div>
         <div class="suggestions"><button>⚡ 次のステップを提案</button><button>▥ 競合を分析する</button><button>✎ アイデアを広げる</button></div>
-        <form id="chatForm"><input id="chatInput" placeholder="AIに指示を出すか、質問してください..." /><button type="submit">↑</button></form>
+        <form id="chatForm"><input id="chatInput" autocomplete="off" placeholder="商品、ターゲット、媒体、秒数を自分の言葉で入力してください..." /><button id="chatSubmit" type="submit" aria-label="送信">↑</button></form>
+        <div class="chat-status hidden" id="chatStatus" role="status"></div>
       </section>
     </main>
 
     <aside class="inspector hidden" id="inspector">
       <div class="inspector-head"><button id="closeInspector">←</button><strong id="inspectorTitle">Script Agent</strong><button>•••</button></div>
       <div class="agent-title"><div class="agent-icon cyan-bg">✎</div><div><h2 id="inspectorAgentName">Script Agent</h2><span class="status-pill">● In Progress</span></div></div>
-      <div class="tabs"><button class="active">Overview</button><button>Output</button><button>History</button><button>Prompt</button></div>
-      <div class="inspector-body">
+      <div class="tabs" id="inspectorTabs"><button class="active" data-tab="overview">Overview</button><button data-tab="output">Output</button><button data-tab="history">History</button><button data-tab="prompt">Prompt</button></div>
+      <div class="inspector-body" id="overviewPanel">
         <div class="label-row"><strong>進捗状況</strong><span id="progressText">65%</span></div>
         <div class="progress"><span id="progressBar" style="width:65%"></span></div>
         <ul class="steps"><li class="done">✓ ターゲット分析 <em>完了</em></li><li class="done">✓ ペルソナ設定 <em>完了</em></li><li class="active">● スクリプト構成 <em>進行中</em></li><li>○ CTA・締め <em>待機中</em></li></ul>
         <hr />
-        <strong>モデル</strong><div class="model-row"><span>Claude / GPT</span><b>AI</b></div>
+        <strong>モデル</strong><div class="model-row"><span>Gemini</span><b>AI</b></div>
         <hr />
         <strong>出力プレビュー</strong>
         <div class="preview-card"><div><b>「患者さんの笑顔が、私たちの誇りです。」</b><p>麻布歯科で、あなたらしいキャリアを。</p></div><div class="preview-image">AI</div><button>プレビューを開く →</button></div>
       </div>
+      <div class="inspector-body hidden" id="outputPanel"><div class="empty-output">チャット欄に商品と広告条件を入力すると、ここに Persona と Script が表示されます。</div></div>
+      <div class="inspector-body hidden" id="historyPanel"><div class="empty-output">この端末で生成した履歴が表示されます。</div></div>
+      <div class="inspector-body hidden" id="promptPanel"><div class="empty-output">Prompt は3つの Skill 内で管理されています。チャットには普段の言葉で入力してください。</div></div>
     </aside>
   </div>
-  <script src="./app.js"></script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
