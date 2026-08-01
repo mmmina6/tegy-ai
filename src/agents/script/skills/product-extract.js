@@ -17,14 +17,15 @@ export const productSchema = {
   required: ['productName', 'description', 'benefits', 'audience', 'platform', 'durationSeconds', 'objective', 'tone', 'cta', 'assumptions']
 };
 
-export function extractProduct(message, project) {
+export function extractProduct(message, projectContext) {
   return generateStructured({
     schema: productSchema,
     prompt: `You are TEGY's Product Extract Skill. Convert the user's natural-language advertising request into a precise production brief.
 Do not invent factual product claims, prices, certifications, ingredients, or performance numbers. Put reasonable creative defaults in assumptions.
 Write all values in the same primary language as the user's request.
 
-Current project: ${JSON.stringify(project || {})}
+Shared Project context: ${JSON.stringify(projectContext || {})}
+Use known customer, product/service and final requirement as stable context. The user request is the campaign-specific brief. Never invent missing Project facts.
 User request: ${message}`
   });
 }
