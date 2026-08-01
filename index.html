@@ -14,19 +14,23 @@
   <div class="app" id="app">
     <aside class="sidebar" id="sidebar" aria-label="Projects">
       <div class="sidebar-brand"><img src="./tegy-logo.png" alt="TEGY" /></div>
+      <div class="sidebar-scroll">
       <button class="new-project" id="newProjectBtn"><span>＋</span> New Project</button>
       <p class="section-label">PROJECTS</p>
       <div class="project-list" id="projectList"></div>
-      <p class="section-label agent-label">AGENT LIBRARY</p>
+      <p class="section-label agent-label">ADD WORK</p>
       <div class="agent-list">
-        <button data-add-agent="Brand Agent"><i class="mint">◇</i><span>Brand Agent</span></button>
-        <button data-add-agent="Script Agent"><i class="cyan">✎</i><span>Script Agent</span></button>
-        <button data-add-agent="Animation Agent"><i class="pink">▷</i><span>Animation Agent</span></button>
-        <button data-add-agent="ShadowBan Agent"><i class="orange">⬡</i><span>ShadowBan Agent</span></button>
-        <button data-add-agent="Image Agent"><i class="violet">▧</i><span>Image Agent</span></button>
+        <button data-add-agent="Research Agent" title="Add Research Work to this Project"><i class="mint">◎</i><span>Research</span></button>
+        <button data-add-agent="Script Agent" title="Add AI Script Work to this Project"><i class="cyan">✎</i><span>AI Script</span></button>
+        <button data-add-agent="ShadowBan Agent" title="Add Shadow Ban / SEO Work to this Project"><i class="orange">⬡</i><span>Shadow Ban / SEO</span></button>
+        <button data-add-agent="Animation Agent" title="Add Anime Work to this Project"><i class="pink">▷</i><span>Anime</span></button>
+        <button data-add-agent="Video Agent" title="Add Video Work to this Project"><i class="violet">▧</i><span>Video</span></button>
+        <button data-add-agent="Operations Agent" title="Add Operations Work to this Project"><i class="mint">⌘</i><span>Operations</span></button>
+      </div>
       </div>
       <div class="sidebar-footer">
         <button>⚙ Settings</button><button>ⓘ Help</button>
+        <button class="google-workspace-entry" id="googleAccountBtn"><span>G</span><div><strong>Google Workspace</strong><small>Company login</small></div><i>›</i></button>
         <div class="profile"><span class="avatar">M</span><div><strong>Mina Rho</strong><small>TEGY Creative Team</small></div></div>
       </div>
     </aside>
@@ -38,9 +42,9 @@
           <div class="breadcrumbs" id="breadcrumbs"><strong>TEGY Canvas</strong></div>
         </div>
         <div class="topbar-right">
-          <label class="search"><span>⌕</span><input placeholder="Search anything..." /><kbd>⌘K</kbd></label>
+          <label class="search"><span>⌕</span><input id="globalSearch" autocomplete="off" placeholder="Search projects..." /><kbd>⌘K</kbd><div class="search-results hidden" id="searchResults"></div></label>
           <button class="icon-button">♧<span class="notification-dot"></span></button>
-          <button class="gradient-plus" id="quickAdd">＋</button>
+          <button class="gradient-plus" id="quickAdd" aria-label="Add Work to current Project" title="Add Work to current Project">＋<span class="plus-tooltip">Add Work</span></button>
         </div>
       </header>
 
@@ -63,7 +67,27 @@
         <svg class="connections" id="connections" aria-hidden="true"></svg>
         <div class="node-layer" id="nodeLayer"></div>
         <div class="zoom-tools"><button>☝</button><button>＋</button><button>－</button><button>⛶</button></div>
-        <button class="floating-add" id="floatingAdd">＋</button>
+      </section>
+
+      <section class="full-workspace hidden" id="fullWorkspace" aria-label="Agent workspace">
+        <header class="full-workspace-head">
+          <div><button id="closeWorkspace" aria-label="Back to canvas">←</button><span class="workspace-agent-icon mint-bg" id="fullWorkspaceIcon">◎</span><div><small>AGENT WORKSPACE</small><h2 id="fullWorkspaceTitle">Research Agent Workspace</h2></div></div>
+          <div><span class="autosave">◷ 自動保存済み</span><button class="regenerate">↻ 再生成</button><button id="closeWorkspaceX">×</button></div>
+        </header>
+        <div class="workspace-steps" id="workspaceSteps"></div>
+        <div class="research-workspace" id="researchWorkspace">
+          <aside class="research-book-nav">
+            <div class="book-title"><span>R</span><div><b>Research Book</b><small>Shared Project Knowledge</small></div></div>
+            <nav id="researchSections"></nav>
+            <button class="add-research-section" id="addResearchSection">＋ Add Research Item</button>
+          </aside>
+          <main class="research-book-main">
+            <div class="research-page-head"><div><small id="researchPageKicker">01 · FOUNDATION</small><h1 id="researchPageTitle">Company & Product Research</h1><p id="researchPageDescription"></p></div><button>•••</button></div>
+            <div class="research-table-wrap"><table class="research-table"><thead id="researchTableHead"></thead><tbody id="researchTableBody"></tbody></table><button class="add-research-row" id="addResearchRow">＋ Add row</button></div>
+          </main>
+          <aside class="research-notes"><section><small>AI RESEARCH INSIGHT</small><h3 id="researchInsightTitle"></h3><p id="researchInsightCopy"></p></section><section><small>PROJECT SHARED OUTPUT</small><div class="market-insight-card"><b>Market Persona / Insight</b><p>この市場全体の知見として保存され、Script Agent など全 Work から参照されます。</p></div></section><section><small>EXPORT</small><button>▣ Research PDF</button><button>▦ Export Table</button></section></aside>
+        </div>
+        <div class="generic-workspace hidden" id="genericWorkspace"></div>
       </section>
 
       <section class="chat-panel" id="chatPanel">
@@ -76,24 +100,36 @@
     </main>
 
     <aside class="inspector hidden" id="inspector">
-      <div class="inspector-head"><button id="closeInspector">←</button><strong id="inspectorTitle">Script Agent</strong><button>•••</button></div>
+      <div class="inspector-head"><button id="closeInspector">←</button><strong id="inspectorTitle">Script Agent</strong><button id="workMenuButton" aria-label="Work actions">•••</button></div>
+      <div class="work-action-menu hidden" id="workActionMenu"><button id="renameWork">✎ Rename Work</button><button id="duplicateWork">▣ Duplicate Work</button><hr><button class="danger" id="deleteWork">♲ Delete Work</button></div>
       <div class="agent-title"><div class="agent-icon cyan-bg">✎</div><div><h2 id="inspectorAgentName">Script Agent</h2><span class="status-pill">● In Progress</span></div></div>
       <div class="tabs" id="inspectorTabs"><button class="active" data-tab="overview">Overview</button><button data-tab="output">Output</button><button data-tab="history">History</button><button data-tab="prompt">Prompt</button></div>
       <div class="inspector-body" id="overviewPanel">
         <div class="label-row"><strong>進捗状況</strong><span id="progressText">65%</span></div>
         <div class="progress"><span id="progressBar" style="width:65%"></span></div>
-        <ul class="steps"><li class="done">✓ ターゲット分析 <em>完了</em></li><li class="done">✓ ペルソナ設定 <em>完了</em></li><li class="active">● スクリプト構成 <em>進行中</em></li><li>○ CTA・締め <em>待機中</em></li></ul>
+        <ul class="steps" id="inspectorSteps"></ul>
         <hr />
-        <strong>モデル</strong><div class="model-row"><span>Gemini</span><b>AI</b></div>
+        <div class="work-meta-list" id="inspectorMeta"></div>
         <hr />
-        <strong>出力プレビュー</strong>
-        <div class="preview-card"><div><b>「患者さんの笑顔が、私たちの誇りです。」</b><p>麻布歯科で、あなたらしいキャリアを。</p></div><div class="preview-image">AI</div><button>プレビューを開く →</button></div>
+        <strong>現在のタスク</strong>
+        <div class="current-work-task" id="inspectorCurrentTask"></div>
+        <button class="open-workspace-button" id="openWorkspaceBtn"><span>Open Workspace</span><small>フル画面で作業する · Double click</small><b>→</b></button>
       </div>
       <div class="inspector-body hidden" id="outputPanel"><div class="empty-output">チャット欄に商品と広告条件を入力すると、ここに Persona と Script が表示されます。</div></div>
       <div class="inspector-body hidden" id="historyPanel"><div class="empty-output">この端末で生成した履歴が表示されます。</div></div>
       <div class="inspector-body hidden" id="promptPanel"><div class="empty-output">Prompt は3つの Skill 内で管理されています。チャットには普段の言葉で入力してください。</div></div>
     </aside>
   </div>
+  <dialog class="google-login-dialog" id="googleLoginDialog">
+    <button class="google-dialog-close" id="closeGoogleDialog">×</button>
+    <img src="./tegy-logo-horizontal.png" alt="TEGY" />
+    <p class="google-kicker">SECURE COMPANY ACCESS</p>
+    <h2>TEGY にログイン</h2>
+    <p>会社の Google Workspace アカウントでログインしてください。</p>
+    <button class="google-signin" id="googleSigninPreview"><span>G</span>Google で続行</button>
+    <div class="domain-note">✓ 許可された会社ドメインのみ<br>✓ Project ごとのアクセス権限<br>✓ 操作履歴と安全なデータ管理</div>
+    <small>UI Preview · Google 認証は最終開発フェーズで接続します</small>
+  </dialog>
   <script type="module" src="./app.js"></script>
 </body>
 </html>
