@@ -26,6 +26,8 @@ let selectedNode = null;
 let generating = false;
 const outputs = loadOutputs();
 const projectWorks = loadProjectWorks();
+const researchOutputs = loadResearchOutputs();
+let activeWorkspaceNodeId = null;
 
 const $ = id => document.getElementById(id);
 const app = $('app');
@@ -78,6 +80,21 @@ function saveProjectWorks() {
   if (!selectedProject) return;
   projectWorks[selectedProject] = structuredClone(nodes);
   localStorage.setItem('tegy-project-works', JSON.stringify(projectWorks));
+}
+
+function loadResearchOutputs() {
+  try { return JSON.parse(localStorage.getItem('tegy-research-outputs') || '{}'); }
+  catch { return {}; }
+}
+
+function saveResearchOutputs() {
+  localStorage.setItem('tegy-research-outputs', JSON.stringify(researchOutputs));
+}
+
+function buildProjectContext() {
+  const project = projects.find(item => item.id === selectedProject) || {};
+  const details = projectDetails[selectedProject] || {};
+  return { id: project.id, name: project.name, customer: project.sub, owner: details.owner, deadline: details.deadline, finalRequirement: details.requirement };
 }
 
 function renderProjects() {
@@ -225,6 +242,7 @@ function renderInspectorDetails(node) {
 function openFullWorkspace(id) {
   const node = nodes.find(item => item.id === id);
   if (!node) return;
+  activeWorkspaceNodeId = id;
   closeInspector();
   fullWorkspace.classList.remove('hidden');
   $('chatPanel').classList.add('hidden');
@@ -232,6 +250,7 @@ function openFullWorkspace(id) {
   $('fullWorkspaceIcon').textContent = node.icon;
   $('fullWorkspaceIcon').className = `workspace-agent-icon ${node.cls}`;
   const workspaceKey = getWorkspaceKey(node);
+  $('runWorkspaceAgent').textContent = workspaceKey === 'research' ? '↻ Run Research' : workspaceKey === 'script' ? '↻ Generate Script' : '↻ Run Agent';
   const stepMap = {
     research: ['01. Project Brief','02. Company & Product','03. Market Research','04. Competitors','05. Ads & Organic','06. Market Insight','07. Report'],
     script: ['01. Campaign Brief','02. Campaign Persona','03. Hooks','04. Generate Script','05. Scene & Storyboard'],
@@ -286,8 +305,55 @@ function deliveryCenterMarkup(type) {
 }
 
 function closeFullWorkspace() {
+  activeWorkspaceNodeId = null;
   fullWorkspace.classList.add('hidden');
   $('chatPanel').classList.remove('hidden');
+}
+
+async function runActiveWorkspaceAgent() {
+  const node = nodes.find(item => item.id === activeWorkspaceNodeId);
+  if (!node) return;
+  const key = getWorkspaceKey(node);
+  if (key !== 'research') {
+    $('workspaceSaveStatus').textContent = key === 'script' ? 'AI Script は下部チャットから実行できます' : 'この Agent の実行コードは次の開発フェーズです';
+    return;
+  }
+  const button = $('runWorkspaceAgent');
+  button.disabled = true;
+  $('workspaceSaveStatus').textContent = '● Research Agent 実行中...';
+  node.status = 'In Progress'; node.progress = 55; saveProjectWorks();
+  try {
+    const response = await fetch('/api/research', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ projectContext:buildProjectContext(), researchBook:researchItems }) });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || payload.error || 'Research failed.');
+    researchOutputs[selectedProject] ||= [];
+    researchOutputs[selectedProject].push(payload);
+    saveResearchOutputs();
+    applyResearchOutput(payload);
+    node.status = 'Completed'; node.progress = 100; saveProjectWorks();
+    $('workspaceSaveStatus').textContent = '✓ Research Report を保存しました';
+  } catch (error) {
+    node.status = 'Needs attention'; node.progress = 0; saveProjectWorks();
+    $('workspaceSaveStatus').textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function applyResearchOutput(result) {
+  const sectionMap = [
+    ['companyAndProduct', 0], ['marketAndTrends', 1], ['competitorAccounts', 2],
+    ['paidAdvertising', 3], ['organicAndVideo', 4], ['platformAndPolicy', 5]
+  ];
+  sectionMap.forEach(([key,index]) => {
+    const findings = result.landscape?.[key] || [];
+    if (findings.length) researchItems[index].rows = findings.map(item => [item.topic, item.finding, item.sourceUrl || item.evidence, item.needsVerification ? 'Verify' : 'Ready']);
+  });
+  const market = result.marketInsight;
+  if (market?.marketPersonas?.length) researchItems[6].rows = market.marketPersonas.map(persona => [persona.name, persona.needs.join(' / '), persona.context, persona.evidenceBasis.join(' / ')]).concat([['Primary Market Insight','',market.primaryMarketInsight,'Research Agent']]);
+  if (result.strategy?.strategicDirections?.length) researchItems[7].rows = result.strategy.strategicDirections.map(item => [String(item.priority), item.direction, item.rationale, item.recommendedWork]);
+  saveResearchBook();
+  renderResearchBook();
 }
 
 function renderResearchBook() {
@@ -456,8 +522,8 @@ async function submitChat(event) {
   selectNode('script');
 
   try {
-    const project = projects.find(item => item.id === selectedProject);
-    const response = await fetch('/api/script', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message, project }) });
+    const latestResearch = researchOutputs[selectedProject]?.at(-1) || null;
+    const response = await fetch('/api/script', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message, projectContext: buildProjectContext(), researchContext: latestResearch ? { marketInsight: latestResearch.marketInsight, strategy: latestResearch.strategy } : null }) });
     const isJson = response.headers.get('content-type')?.includes('application/json');
     if (!isJson) throw new Error('AI服务器接口が起動していません。Vercel Dev またはデプロイ環境で実行してください。');
     const payload = await response.json();
@@ -489,6 +555,7 @@ $('duplicateWork').onclick = duplicateSelectedWork;
 $('deleteWork').onclick = deleteSelectedWork;
 $('closeWorkspace').onclick = closeFullWorkspace;
 $('closeWorkspaceX').onclick = closeFullWorkspace;
+$('runWorkspaceAgent').onclick = runActiveWorkspaceAgent;
 $('openWorkspaceBtn').onclick = () => selectedNode && openFullWorkspace(selectedNode);
 $('addResearchRow').onclick = addResearchRow;
 $('addResearchSection').onclick = addResearchSection;
