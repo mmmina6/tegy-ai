@@ -3,17 +3,13 @@ const text = value => String(value || '').trim();
 export function buildSeoOperations(snapshot = {}) {
   const source = text(snapshot.seoInventory || snapshot.recentContentNotes);
   const checks = [
-    ['search-queries','YouTube Search queries','导出带来流量的实际搜索词，并与标题承诺逐条对齐。'],
-    ['titles','Titles','检查主题是否明确、是否符合搜索意图、是否存在夸张或重复模板。'],
-    ['descriptions','Descriptions','前两行说明视频价值；补充自然语言上下文和必要链接。'],
-    ['keywords','Keywords & entities','覆盖主题实体和观众用语，不堆砌同义词。'],
-    ['hashtags','Hashtags','仅保留直接相关标签；数量不是排名目标。'],
-    ['topic-cluster','Topic consistency','把视频归入稳定主题集群，识别突然偏题造成的受众错配。'],
-    ['thumbnail-title','Thumbnail / title match','确认缩略图、标题和视频实际内容一致。']
+    ['search-queries','YouTube Search queries','実際に流入した検索語句を出力し、タイトルの訴求と1本ずつ照合します。'],
+    ['titles','Titles','テーマ、検索意図との一致、誇張表現、テンプレート重複を確認します。'],
+    ['descriptions','Descriptions','冒頭2行で動画の価値を伝え、自然な文脈と必要なリンクを追加します。'],
+    ['keywords','Keywords & entities','テーマの主要エンティティと視聴者の言葉を含め、類義語の詰め込みを避けます。'],
+    ['hashtags','Hashtags','動画に直接関連するタグだけを残します。タグ数自体をランキング目標にしません。'],
+    ['topic-cluster','Topic consistency','動画を安定したtopic clusterに分類し、急なテーマ変更によるaudience mismatchを確認します。'],
+    ['thumbnail-title','Thumbnail / title match','サムネイル、タイトル、動画内容が一致しているか確認します。']
   ].map(([id, area, action]) => ({ id, area, status: source ? 'ready-for-review' : 'needs-data', action }));
-  return {
-    checks,
-    requiredInputs: source ? [] : ['直近 50 条视频标题', '说明栏', '主要关键词/Hashtag', 'YouTube Search queries 与流量', '缩略图或链接'],
-    sourceProvided: Boolean(source)
-  };
+  return { checks, requiredInputs: source ? [] : ['直近50本のタイトル', 'Description', '主要Keywords / Hashtags', 'YouTube Search queriesと流入数', 'サムネイルまたは動画URL'], sourceProvided: Boolean(source) };
 }

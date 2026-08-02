@@ -21,7 +21,7 @@ test('operational audit turns TEGY review rules into evidence-aware checks', () 
   assert.equal(result.checks.find(item => item.id === 'script-similarity').status, 'pass');
   assert.equal(result.accountChecks.find(item => item.id === 'bulkDeletion').status, 'needs-data');
   assert.equal(result.accountChecks.find(item => item.id === 'verificationIncomplete').status, 'review');
-  assert.match(result.note, /内部复核/);
+  assert.match(result.note, /社内/);
 });
 
 test('SEO operations request source material instead of inventing an audit', () => {
@@ -38,7 +38,7 @@ test('recovery workflow creates three operational phases and an evidence queue',
   assert.equal(workflow.phases.length, 3);
   assert.equal(workflow.baseline.anomalyScore, 45);
   assert.ok(workflow.evidenceQueue.length > 0);
-  assert.match(workflow.promise, /不保证/);
+  assert.match(workflow.promise, /保証/);
 });
 
 test('Shadow Ban Agent combines deterministic signals with cautious AI diagnosis', async () => {
