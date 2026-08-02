@@ -93,12 +93,12 @@ function saveResearchOutputs() {
 }
 
 function loadShadowOutputs() {
-  try { return JSON.parse(localStorage.getItem('tegy-shadow-outputs') || '{}'); }
+  try { return JSON.parse(localStorage.getItem('tegy-shadow-outputs-v2-ja') || '{}'); }
   catch { return {}; }
 }
 
 function saveShadowOutputs() {
-  localStorage.setItem('tegy-shadow-outputs', JSON.stringify(shadowOutputs));
+  localStorage.setItem('tegy-shadow-outputs-v2-ja', JSON.stringify(shadowOutputs));
 }
 
 function buildProjectContext() {
