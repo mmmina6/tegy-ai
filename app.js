@@ -27,6 +27,7 @@ let generating = false;
 const outputs = loadOutputs();
 const projectWorks = loadProjectWorks();
 const researchOutputs = loadResearchOutputs();
+const shadowOutputs = loadShadowOutputs();
 let activeWorkspaceNodeId = null;
 
 const $ = id => document.getElementById(id);
@@ -89,6 +90,15 @@ function loadResearchOutputs() {
 
 function saveResearchOutputs() {
   localStorage.setItem('tegy-research-outputs', JSON.stringify(researchOutputs));
+}
+
+function loadShadowOutputs() {
+  try { return JSON.parse(localStorage.getItem('tegy-shadow-outputs') || '{}'); }
+  catch { return {}; }
+}
+
+function saveShadowOutputs() {
+  localStorage.setItem('tegy-shadow-outputs', JSON.stringify(shadowOutputs));
 }
 
 function buildProjectContext() {
@@ -292,16 +302,37 @@ function renderDeliveryWorkspace(key, node) {
   };
   const d = definitions[key] || definitions.manager;
   $('genericWorkspace').innerHTML = `<div class="delivery-workspace ${key}-delivery"><aside class="delivery-nav"><div class="delivery-nav-title"><span class="node-icon ${node.cls}">${node.icon}</span><div><b>${escapeHtml(node.name)}</b><small>Project Work</small></div></div><nav>${d.nav.map((item,index)=>`<button class="${index===1?'active':''}"><span>${String(index+1).padStart(2,'0')}</span>${escapeHtml(item)}</button>`).join('')}</nav><button class="delivery-add">＋ Add item</button></aside><main class="delivery-main"><header><div><small>${d.kicker}</small><h1>${d.title}</h1><p>${d.copy}</p></div><button>•••</button></header>${deliveryCenterMarkup(d.center)}</main><aside class="delivery-rail"><section><small>AI INSIGHT</small><h3>Recommended direction</h3><p>${d.insight}</p></section><section><small>HISTORY</small><ul><li><b>10:25</b> Workspace updated</li><li><b>10:10</b> Project context synced</li><li><b>Yesterday</b> Client requirement added</li></ul></section><section><small>EXPORT & DELIVERY</small>${d.exports.map(item=>`<button>${escapeHtml(item)} <span>→</span></button>`).join('')}</section></aside></div>`;
+  if (key === 'shadow') {
+    const form = $('shadowAuditForm');
+    if (form) form.onsubmit = event => { event.preventDefault(); runShadowAudit(); };
+  }
 }
 
 function deliveryCenterMarkup(type) {
   if (type === 'animation') return `<div class="animation-director"><div class="director-toolbar"><button class="active">All Assets</button><button>Characters</button><button>Scenes</button><button>References</button><button class="create-asset">＋ Create Asset</button></div><div class="animation-hero"><div><small>DIRECTOR'S BOARD</small><h2>Good afternoon, director!</h2><p>まず世界観とキャラクターを固定して、シーンとショットを組み立てます。</p></div><div class="play-orb">▷</div></div><h3>Style & Character Assets</h3><div class="asset-grid"><article class="asset-card character"><div><span>CHARACTER</span><b>Hero Character</b></div></article><article class="asset-card style"><div><span>STYLE</span><b>Soft 3D / Warm light</b></div></article><article class="asset-card scene"><div><span>SCENE</span><b>Morning Interior</b></div></article></div><div class="shot-board"><div><h3>Scene 01 · Opening</h3><span>3 shots · 8 sec</span></div><div class="shot-strip"><article><b>01</b><p>Establishing shot</p><span>00:00–00:02</span></article><article><b>02</b><p>Character close-up</p><span>00:02–00:05</span></article><article><b>03</b><p>Product reveal</p><span>00:05–00:08</span></article><button>＋</button></div></div></div>`;
   if (type === 'script') return `<div class="persona-board"><section><small>CAMPAIGN INPUT</small><h3>Target & Requirement</h3><div class="editable-box">30〜40代の働く女性。安心感があり、押しつけない30秒広告。</div></section><section class="persona-results"><small>CAMPAIGN PERSONA</small><div><article><span>Persona A · Selected</span><h3>忙しい比較検討層</h3><p>情報は欲しいが、営業的な表現を避けたい。</p><dl><dt>Pain</dt><dd>判断材料が多く、信頼できる違いが見えない</dd><dt>Trigger</dt><dd>具体例と透明な説明</dd></dl></article><article><span>Persona B</span><h3>慎重な初回検討層</h3><p>失敗への不安が大きく、まず安心材料を探す。</p><dl><dt>Pain</dt><dd>自分に合うか分からない</dd><dt>Trigger</dt><dd>第三者視点と利用の流れ</dd></dl></article></div></section><section class="script-editor"><small>HOOK & SCRIPT</small><blockquote>「ちゃんと選びたい。でも、何を信じればいい？」</blockquote><p contenteditable="true">Scene 1 — 日常の迷いを提示<br>Scene 2 — 商品が解決する具体的な理由<br>Scene 3 — 信頼材料と自然な CTA</p></section></div>`;
-  if (type === 'shadow') return `<div class="audit-board"><div class="health-score"><div><strong>78</strong><span>/ 100</span></div><section><small>CHANNEL HEALTH</small><h3>Generally healthy</h3><p>重大な制限シグナルはありません。検索流入と投稿頻度に改善余地があります。</p></section></div><div class="signal-grid"><article><span class="good">● Healthy</span><h3>Recommendation reach</h3><b>+12.4%</b></article><article><span class="warn">● Review</span><h3>Search visibility</h3><b>-8.1%</b></article><article><span class="good">● Healthy</span><h3>Audience retention</h3><b>42.6%</b></article></div><table class="action-table"><thead><tr><th>Priority</th><th>Finding</th><th>Recommended action</th><th>Owner</th></tr></thead><tbody><tr><td>P1</td><td>検索キーワードとの不一致</td><td>Title と Description を再設計</td><td>SEO</td></tr><tr><td>P2</td><td>投稿間隔が不安定</td><td>週次公開スロットを固定</td><td>Operations</td></tr></tbody></table></div>`;
+  if (type === 'shadow') return shadowWorkspaceMarkup(shadowOutputs[selectedProject]?.at(-1));
   if (type === 'video') return `<div class="video-board"><div class="video-preview"><button>▷</button><span>00:00 / 00:30</span></div><div class="video-meta"><section><small>REFERENCE ANALYSIS</small><h3>Hook → Proof → CTA</h3><p>最初の3秒、画面変化、字幕密度、CTA の構造を参考動画から抽出。</p></section><section><small>REVIEW STATUS</small><h3>Rough Cut v03</h3><p>2 comments waiting · Mina Rho</p></section></div><div class="timeline"><b>V1</b><i></i><i></i><i></i><b>A1</b><i></i><i></i></div></div>`;
   if (type === 'operations') return `<div class="operations-board"><div class="calendar-head"><button>←</button><h2>August 2026</h2><button>→</button><span>＋ New Post</span></div><div class="content-calendar">${['MON 3','TUE 4','WED 5','THU 6','FRI 7'].map((day,index)=>`<article><b>${day}</b>${index===1?'<div class="post youtube">YouTube<br><span>How-to video · 18:00</span></div>':''}${index===3?'<div class="post instagram">Instagram<br><span>Reels · Approved</span></div>':''}</article>`).join('')}</div><div class="performance-row"><article><small>VIEWS</small><b>128.4K</b><span>↑ 18%</span></article><article><small>ENGAGEMENT</small><b>6.8%</b><span>↑ 1.2%</span></article><article><small>LEADS</small><b>342</b><span>↑ 24%</span></article></div></div>`;
   if (type === 'brand') return `<div class="brand-board"><div class="brand-hero"><span>BRAND ESSENCE</span><h2>Trust that feels human.</h2><p>専門性を、生活者が理解できる言葉と温度で届ける。</p></div><div class="brand-grid"><article><small>POSITIONING</small><h3>Clear expertise</h3><p>複雑な情報を透明で分かりやすく。</p></article><article><small>TONE OF VOICE</small><h3>Calm · Honest · Warm</h3><p>強く売り込まず、判断を助ける。</p></article><article><small>DO</small><h3>Evidence first</h3><p>具体例、根拠、利用者視点。</p></article><article><small>DON'T</small><h3>Fear or pressure</h3><p>過度な断定と不安訴求を避ける。</p></article></div></div>`;
   return `<div class="manager-board"><div class="manager-summary"><article><small>WORK</small><b>6</b><span>2 in progress</span></article><article><small>REVIEWS</small><b>3</b><span>Client decision</span></article><article><small>DEADLINE</small><b>28 Aug</b><span>27 days left</span></article></div><div class="dependency-map"><div>Research</div><i>→</i><div>AI Script</div><i>→</i><div>Video</div><i>→</i><div>Operations</div></div></div>`;
+}
+
+function shadowWorkspaceMarkup(result) {
+  const riskOptions = '<option value="unknown">未确认</option><option value="no">没有</option><option value="yes">有</option>';
+  return `<div class="audit-board"><form class="channel-audit-form" id="shadowAuditForm"><div class="audit-form-head"><div><small>TEGY · CHANNEL HEALTH / SEO</small><h3>YouTube 频道诊断</h3><p>先比较正常期与近期数据，再审计直近 50 条内容、账号风险和搜索优化。</p></div><button type="submit">Run Full Audit →</button></div><div class="audit-section-title"><b>01 · Distribution signals</b><span>流量下降不等于 Shadow Ban</span></div><div class="audit-input-grid"><label>Platform<select name="platform"><option>YouTube</option></select></label><label>Channel URL<input name="channelUrl" type="url" placeholder="https://..." /></label><label>Period<input name="period" value="Last 28 days" /></label><label>通常 Impressions<input name="baselineImpressions" type="number" min="0" value="100000" /></label><label>直近 Impressions<input name="recentImpressions" type="number" min="0" value="65000" /></label><label>Recommendation traffic %<input name="recommendationTrafficPercent" type="number" min="0" max="100" step="0.1" value="18" /></label><label>Search traffic %<input name="searchTrafficPercent" type="number" min="0" max="100" step="0.1" value="6" /></label><label>CTR %<input name="clickThroughRate" type="number" min="0" max="100" step="0.1" value="4.2" /></label><label>Average retention %<input name="averageRetentionPercent" type="number" min="0" max="100" step="0.1" value="38" /></label><label>Stay to watch %<input name="stayToWatchPercent" type="number" min="0" max="100" step="0.1" placeholder="Shorts" /></label><label>Policy warnings<input name="policyWarnings" type="number" min="0" value="0" /></label></div><div class="audit-section-title"><b>02 · Latest 50 content audit</b><span>TEGY 内部复核指标，不是平台公开处罚线</span></div><div class="audit-input-grid"><label>缩略图相似度 %<input name="thumbnailDuplicatePercent" type="number" min="0" max="100" placeholder="例：47" /></label><label>脚本相似度 %<input name="scriptSimilarityPercent" type="number" min="0" max="100" placeholder="例：60" /></label><label>同素材重复次数 / 20条<input name="repeatedStockUsesIn20" type="number" min="0" /></label><label>每条 Hashtag 数<input name="hashtagsPerVideo" type="number" min="0" /></label><label>每日最高发布数<input name="uploadsPerDay" type="number" min="0" /></label><label>实拍/肉声/原创信息 %<input name="humanOriginalPercent" type="number" min="0" max="100" /></label></div><label class="audit-notes">直近 50 条内容与 SEO 清单<textarea name="recentContentNotes" placeholder="可粘贴：视频标题、说明、关键词/标签、主题、发布时间、观看数据、缩略图和素材重复情况…"></textarea></label><div class="audit-section-title"><b>03 · Account & operation risks</b><span>请选择已知事实，其余保持“未确认”</span></div><div class="audit-risk-grid"><label>默认 AI 音声反复使用<select name="defaultAiVoice">${riskOptions}</select></label><label>画面与脚本不相关<select name="semanticMismatch">${riskOptions}</select></label><label>大量删除视频<select name="bulkDeletion">${riskOptions}</select></label><label>主题/名称/国家突然变更<select name="abruptChannelChanges">${riskOptions}</select></label><label>版权 / Content ID 问题<select name="copyrightIssues">${riskOptions}</select></label><label>异常投诉/负面反馈<select name="negativeFeedback">${riskOptions}</select></label><label>频道资料不完整<select name="incompleteProfile">${riskOptions}</select></label><label>电话/高级功能未认证<select name="verificationIncomplete">${riskOptions}</select></label><label>管理员或关联账号有违规历史<select name="linkedAccountHistory">${riskOptions}</select></label></div><label class="audit-notes">平台明确通知（没有请留空）<textarea name="platformNotice" placeholder="请原样粘贴 YouTube Studio / Email 的限制、警告或申诉结果。"></textarea></label></form>${result ? shadowResultMarkup(result) : '<div class="audit-empty"><span>⬡</span><h3>等待 Full Channel Audit</h3><p>输出包含：检测依据、内容与 SEO 审计、可能原因、90 天恢复计划和持续监测。所有不确定内容都会标记为“需要验证”。</p></div>'}</div>`;
+}
+
+function shadowResultMarkup(result) {
+  const diagnosis = result.diagnosis || {};
+  const signals = result.signalAnalysis?.signals || [];
+  const actions = diagnosis.actions || [];
+  const causes = diagnosis.likelyCauses || [];
+  const audit = result.contentAudit || {};
+  const recoveryPlan = result.recoveryWorkflow?.phases || diagnosis.recoveryPlan || [];
+  const score = Math.max(0, Math.min(100, Number(diagnosis.healthScore) || 0));
+  const auditItems = [...(audit.technicalRisks || []), ...(audit.operationalRisks || [])];
+  return `<section class="audit-result"><div class="health-score"><div style="--score:${score * 3.6}deg"><strong>${score}</strong><span>/ 100</span></div><section><small>CHANNEL HEALTH</small><h3>${escapeHtml(diagnosis.riskLevel || 'Needs review')}</h3><p>${escapeHtml(diagnosis.diagnosis || '')}</p><span class="confidence">Confidence · ${escapeHtml(diagnosis.confidence || 'Limited')}</span></section></div><div class="shadow-ban-verdict ${diagnosis.confirmedRestriction ? 'confirmed' : ''}"><b>${diagnosis.confirmedRestriction ? 'Explicit restriction evidence found' : 'No confirmed Shadow Ban'}</b><p>${escapeHtml(diagnosis.disclaimer || 'Performance changes alone cannot confirm a platform restriction.')}</p></div><div class="signal-grid">${signals.map(signal => `<article><span class="${signal.status === 'healthy' ? 'good' : signal.status === 'critical' ? 'critical' : 'warn'}">● ${escapeHtml(signal.status)}</span><h3>${escapeHtml(signal.label)}</h3><b>${escapeHtml(signal.value)}${escapeHtml(signal.unit)}</b></article>`).join('')}</div><section class="audit-findings"><small>CONTENT / OPERATION AUDIT</small><div>${auditItems.map(item => `<article><span>${escapeHtml(item.status)}</span><b>${escapeHtml(item.area)}</b><p>${escapeHtml(item.evidence)}</p><em>${escapeHtml(item.recommendation)}</em></article>`).join('') || '<p>需要更多资料完成内容审计。</p>'}</div></section><section class="seo-findings"><small>SEO CHECK</small><ul>${(audit.seoGaps || []).map(item => `<li>${escapeHtml(item)}</li>`).join('') || '<li>请提供标题、说明、关键词与搜索查询数据。</li>'}</ul></section><section class="cause-section"><small>POSSIBLE CAUSES</small>${causes.map(cause => `<article><div><b>${escapeHtml(cause.cause)}</b><span>${escapeHtml(cause.likelihood)}</span></div><p>${escapeHtml(cause.evidence)}</p><em>Alternative: ${escapeHtml(cause.alternativeExplanation)}</em></article>`).join('')}</section><table class="action-table"><thead><tr><th>Priority</th><th>Recommended action</th><th>Reason</th><th>Success metric</th></tr></thead><tbody>${actions.map(action => `<tr><td>${escapeHtml(action.priority)}</td><td>${escapeHtml(action.action)}<small>${escapeHtml(action.owner)}</small></td><td>${escapeHtml(action.reason)}</td><td>${escapeHtml(action.successMetric)}</td></tr>`).join('')}</tbody></table><section class="recovery-roadmap"><small>90-DAY RECOVERY ROADMAP</small><div>${recoveryPlan.map(phase => `<article><span>${escapeHtml(phase.period)}</span><h3>${escapeHtml(phase.phase)}</h3><p>${escapeHtml(phase.objective)}</p><ul>${(phase.tasks || []).map(task => `<li>${escapeHtml(task)}</li>`).join('')}</ul><b>Exit · ${(phase.exitCriteria || []).map(escapeHtml).join(' / ')}</b></article>`).join('')}</div></section><section class="verification-plan"><div><small>VERIFICATION STEPS</small><ul>${(diagnosis.verificationSteps || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div><div><small>MONITORING METRICS</small><ul>${(diagnosis.monitoringMetrics || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div></section></section>`;
 }
 
 function closeFullWorkspace() {
@@ -314,6 +345,7 @@ async function runActiveWorkspaceAgent() {
   const node = nodes.find(item => item.id === activeWorkspaceNodeId);
   if (!node) return;
   const key = getWorkspaceKey(node);
+  if (key === 'shadow') return runShadowAudit();
   if (key !== 'research') {
     $('workspaceSaveStatus').textContent = key === 'script' ? 'AI Script は下部チャットから実行できます' : 'この Agent の実行コードは次の開発フェーズです';
     return;
@@ -337,6 +369,37 @@ async function runActiveWorkspaceAgent() {
     $('workspaceSaveStatus').textContent = error.message;
   } finally {
     button.disabled = false;
+  }
+}
+
+async function runShadowAudit() {
+  const node = nodes.find(item => item.id === activeWorkspaceNodeId);
+  const form = $('shadowAuditForm');
+  if (!node || !form) return;
+  const data = Object.fromEntries(new FormData(form));
+  const numericFields = ['baselineImpressions','recentImpressions','recommendationTrafficPercent','searchTrafficPercent','clickThroughRate','averageRetentionPercent','stayToWatchPercent','policyWarnings','thumbnailDuplicatePercent','scriptSimilarityPercent','repeatedStockUsesIn20','hashtagsPerVideo','uploadsPerDay','humanOriginalPercent'];
+  numericFields.forEach(field => { data[field] = Number(data[field] || 0); });
+  const button = $('runWorkspaceAgent');
+  button.disabled = true;
+  form.querySelector('button[type="submit"]').disabled = true;
+  $('workspaceSaveStatus').textContent = '● Channel signals を分析中...';
+  node.status = 'In Progress'; node.progress = 55; saveProjectWorks();
+  try {
+    const response = await fetch('/api/shadow-ban', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ projectContext:buildProjectContext(), channelSnapshot:data }) });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || payload.error || 'Channel audit failed.');
+    shadowOutputs[selectedProject] ||= [];
+    shadowOutputs[selectedProject].push(payload);
+    saveShadowOutputs();
+    node.status = 'Completed'; node.progress = 100; node.detail = `${payload.diagnosis.riskLevel} · Health ${payload.diagnosis.healthScore}/100`; saveProjectWorks();
+    $('workspaceSaveStatus').textContent = '✓ Channel Audit を保存しました';
+    button.disabled = false;
+    renderDeliveryWorkspace('shadow', node);
+  } catch (error) {
+    node.status = 'Needs attention'; node.progress = 0; saveProjectWorks();
+    $('workspaceSaveStatus').textContent = error.message;
+    button.disabled = false;
+    form.querySelector('button[type="submit"]').disabled = false;
   }
 }
 
