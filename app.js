@@ -25,10 +25,12 @@ let nodes = [];
 let selectedNode = null;
 let generating = false;
 const outputs = loadOutputs();
+const storyboardImages = {};
 const projectWorks = loadProjectWorks();
 const researchOutputs = loadResearchOutputs();
 const shadowOutputs = loadShadowOutputs();
 let activeWorkspaceNodeId = null;
+let activeScriptExportSection = 3;
 
 const $ = id => document.getElementById(id);
 const app = $('app');
@@ -263,7 +265,7 @@ function openFullWorkspace(id) {
   $('runWorkspaceAgent').textContent = workspaceKey === 'research' ? '↻ Run Research' : workspaceKey === 'script' ? '↻ Generate Script' : '↻ Run Agent';
   const stepMap = {
     research: ['01. Project Brief','02. Company & Product','03. Market Research','04. Competitors','05. Ads & Organic','06. Market Insight','07. Report'],
-    script: ['01. Campaign Brief','02. Campaign Persona','03. Hooks','04. Generate Script','05. Scene & Storyboard'],
+    script: ['01. Campaign Brief','02. Persona / Viewer','03. Hook Library','04. Script Editor','05. Scenes / 字コンテ','06. Visual Storyboard / 絵コンテ','07. Versions'],
     animation: ['01. Creative Brief','02. Style & Characters','03. Scenes & Shots','04. Animate','05. Compose & Export'],
     shadow: ['01. Channel Input','02. Health Check','03. Content Audit','04. SEO Actions','05. Monitoring Report'],
     video: ['01. Video Brief','02. References','03. Shot Plan','04. Edit & Review','05. Delivery'],
@@ -292,7 +294,7 @@ function getWorkspaceKey(node) {
 
 function renderDeliveryWorkspace(key, node) {
   const definitions = {
-    script: { kicker:'CAMPAIGN CREATION', title:'Campaign Persona & Script', copy:'Project の Market Insight を読み、この広告専用の Campaign Persona、Hook、Script、Scene を生成します。', nav:['Campaign Brief','Campaign Persona','Hook Library','Script Editor','Scenes','Versions'], center:'script', insight:'この Campaign では「安心」だけでなく、行動を妨げている具体的な不安を最初の3秒で言語化します。', exports:['Export Script','Storyboard PDF'] },
+    script: { kicker:'SCRIPT PRODUCTION', title:'Multi-format Script Workspace', copy:'AdvertisementまたはYouTube撮影台本を生成・編集し、字コンテから絵コンテまで制作します。', nav:['Campaign Brief','Persona / Viewer','Hook Library','Script Editor','Scenes / 字コンテ','Visual Storyboard / 絵コンテ','Versions'], center:'script', insight:'Script Typeに応じて構成と撮影項目を切り替え、Project / Research Contextを共通利用します。', exports:['Export Current Section','Export Full Package'] },
     animation: { kicker:'ANIMATION DIRECTOR', title:'Bring the story to life', copy:'キャラクター、世界観、シーン、ショットを一つの制作ボードで管理します。', nav:['Creative Brief','Style References','Characters','Scenes','Shots','Asset Library'], center:'animation', insight:'キャラクターと背景の一貫性を先に固定し、ショットごとの再生成を減らします。', exports:['Preview MP4','Asset Package'] },
     shadow: { kicker:'CHANNEL HEALTH', title:'Shadow Ban / SEO Audit', copy:'チャンネルの健全性、検索露出、投稿パターン、改善アクションをまとめます。', nav:['Channel Overview','Health Signals','Content Audit','Keywords','Action Plan','Monitoring'], center:'shadow', insight:'単一指標で Shadow Ban と断定せず、露出・検索・視聴維持・投稿履歴を組み合わせて評価します。', exports:['Audit Report','Action CSV'] },
     video: { kicker:'VIDEO PRODUCTION', title:'Video Production Board', copy:'参考動画から Shot Plan、素材、編集レビュー、最終納品までを管理します。', nav:['Video Brief','References','Shot List','Footage','Edit Review','Deliverables'], center:'video', insight:'参考動画は見た目だけでなく、Hook、尺、画面変化、CTA の構造として分解します。', exports:['Review Link','Delivery Package'] },
@@ -301,16 +303,23 @@ function renderDeliveryWorkspace(key, node) {
     manager: { kicker:'PROJECT CONTROL', title:'Project Delivery Overview', copy:'Work、依存関係、レビュー、クライアント確認、最終納品を管理します。', nav:['Project Brief','Work Plan','Dependencies','Approvals','Timeline','Delivery'], center:'manager', insight:'止まっている Work と次に必要な判断を優先表示します。', exports:['Project Report','Delivery Index'] }
   };
   const d = definitions[key] || definitions.manager;
-  $('genericWorkspace').innerHTML = `<div class="delivery-workspace ${key}-delivery"><aside class="delivery-nav"><div class="delivery-nav-title"><span class="node-icon ${node.cls}">${node.icon}</span><div><b>${escapeHtml(node.name)}</b><small>Project Work</small></div></div><nav>${d.nav.map((item,index)=>`<button class="${index===1?'active':''}"><span>${String(index+1).padStart(2,'0')}</span>${escapeHtml(item)}</button>`).join('')}</nav><button class="delivery-add">＋ Add item</button></aside><main class="delivery-main"><header><div><small>${d.kicker}</small><h1>${d.title}</h1><p>${d.copy}</p></div><button>•••</button></header>${deliveryCenterMarkup(d.center)}</main><aside class="delivery-rail"><section><small>AI INSIGHT</small><h3>Recommended direction</h3><p>${d.insight}</p></section><section><small>HISTORY</small><ul><li><b>10:25</b> Workspace updated</li><li><b>10:10</b> Project context synced</li><li><b>Yesterday</b> Client requirement added</li></ul></section><section><small>EXPORT & DELIVERY</small>${d.exports.map(item=>`<button>${escapeHtml(item)} <span>→</span></button>`).join('')}</section></aside></div>`;
+  $('genericWorkspace').innerHTML = `<div class="delivery-workspace ${key}-delivery"><aside class="delivery-nav"><div class="delivery-nav-title"><span class="node-icon ${node.cls}">${node.icon}</span><div><b>${escapeHtml(node.name)}</b><small>Project Work</small></div></div><nav>${d.nav.map((item,index)=>`<button class="${index===1?'active':''}"><span>${String(index+1).padStart(2,'0')}</span>${escapeHtml(item)}</button>`).join('')}</nav><button class="delivery-add">＋ Add item</button></aside><main class="delivery-main"><header><div><small>${d.kicker}</small><h1>${d.title}</h1><p>${d.copy}</p></div><button>•••</button></header>${deliveryCenterMarkup(d.center)}</main><aside class="delivery-rail"><section><small>AI INSIGHT</small><h3>Recommended direction</h3><p>${d.insight}</p></section><section><small>HISTORY</small><ul><li><b>10:25</b> Workspace updated</li><li><b>10:10</b> Project context synced</li><li><b>Yesterday</b> Client requirement added</li></ul></section><section><small>EXPORT & DELIVERY</small>${d.exports.map((item,index)=>`<button data-export-index="${index}">${escapeHtml(item)} <span>→</span></button>`).join('')}</section></aside></div>`;
   if (key === 'shadow') {
     const form = $('shadowAuditForm');
     if (form) form.onsubmit = event => { event.preventDefault(); runShadowAudit(); };
   }
   if (key === 'script') {
+    const latestScriptResult = outputs[selectedProject]?.at(-1);
+    const editor = document.querySelector('.production-script-editor');
+    if (editor && latestScriptResult) editor.insertAdjacentHTML('beforeend', visualStoryboardMarkup(latestScriptResult));
     const form = $('scriptWorkspaceForm');
     if (form) form.onsubmit = event => { event.preventDefault(); runScriptWorkspace(); };
     const save = $('saveScriptEdits');
     if (save) save.onclick = saveScriptWorkspaceEdits;
+    document.querySelectorAll('[data-generate-storyboard]').forEach(button => { button.onclick = () => generateStoryboardFrame(Number(button.dataset.generateStoryboard)); });
+    document.querySelectorAll('[data-download-storyboard]').forEach(button => { button.onclick = () => downloadStoryboardFrame(Number(button.dataset.downloadStoryboard)); });
+    document.querySelectorAll('[data-export-index]').forEach(button => { button.onclick = () => exportScriptPackage(Number(button.dataset.exportIndex)); });
+    document.querySelectorAll('.delivery-nav nav button').forEach((button,index) => { button.onclick = () => { activeScriptExportSection = index; document.querySelectorAll('.delivery-nav nav button').forEach(item => item.classList.remove('active')); button.classList.add('active'); }; });
   }
 }
 
@@ -340,6 +349,81 @@ function saveScriptWorkspaceEdits() {
   });
   saveOutputs();
   $('workspaceSaveStatus').textContent = '✓ Manual edits saved';
+}
+
+function storyboardKey(result, index) {
+  return `${result.createdAt || 'latest'}:${index}`;
+}
+
+function visualStoryboardMarkup(result) {
+  const images = storyboardImages[selectedProject] || {};
+  return `<section class="visual-storyboard"><header><div><small>06 · VISUAL STORYBOARD / 絵コンテ</small><h2>Shot Images</h2><p>字コンテを確認してから、必要なShotだけを生成してください。</p></div></header><div class="storyboard-card-grid">${(result.script.scenes || []).map((scene,index)=>{ const image = images[storyboardKey(result,index)]; return `<article><div class="storyboard-frame">${image ? `<img src="${image.dataUrl}" alt="Storyboard Shot ${index+1}">` : `<span>SHOT ${String(index+1).padStart(2,'0')}</span>`}</div><div><small>${escapeHtml(scene.seconds)}</small><b>${escapeHtml(scene.visual)}</b><p>${escapeHtml(scene.camera || scene.shotType || '')}</p><button data-generate-storyboard="${index}">${image ? 'Regenerate' : 'Generate Image'}</button>${image ? `<button class="secondary" data-download-storyboard="${index}">Download PNG</button>` : ''}</div></article>`; }).join('')}</div></section>`;
+}
+
+async function generateStoryboardFrame(index) {
+  const result = outputs[selectedProject]?.at(-1);
+  const scene = result?.script?.scenes?.[index];
+  const button = document.querySelector(`[data-generate-storyboard="${index}"]`);
+  if (!result || !scene || !button) return;
+  button.disabled = true; button.textContent = 'Generating...';
+  $('workspaceSaveStatus').textContent = `● Shot ${index + 1} image generating...`;
+  try {
+    const response = await fetch('/api/storyboard-image', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ scene, projectContext:buildProjectContext(), scriptContext:{ title:result.script.title, concept:result.script.concept, type:result.scriptType }, aspectRatio:'16:9' }) });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || payload.error || 'Image generation failed.');
+    storyboardImages[selectedProject] ||= {};
+    storyboardImages[selectedProject][storyboardKey(result,index)] = payload;
+    renderDeliveryWorkspace('script', nodes.find(item => item.id === activeWorkspaceNodeId));
+    $('workspaceSaveStatus').textContent = `✓ Shot ${index + 1} image generated`;
+  } catch (error) {
+    button.disabled = false; button.textContent = 'Generate Image';
+    $('workspaceSaveStatus').textContent = error.message;
+  }
+}
+
+function downloadFile(name, content, type = 'text/plain;charset=utf-8') {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const link = document.createElement('a'); link.href = url; link.download = name; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function downloadStoryboardFrame(index) {
+  const result = outputs[selectedProject]?.at(-1);
+  const image = storyboardImages[selectedProject]?.[storyboardKey(result,index)];
+  if (!image) return;
+  const link = document.createElement('a'); link.href = image.dataUrl; link.download = `storyboard-shot-${String(index+1).padStart(2,'0')}.png`; link.click();
+}
+
+const csvCell = value => `"${String(value ?? '').replaceAll('"','""')}"`;
+
+function exportScriptPackage(fullPackage) {
+  const result = outputs[selectedProject]?.at(-1);
+  if (!result) { $('workspaceSaveStatus').textContent = '生成済みのScriptがありません'; return; }
+  if (fullPackage === 1) {
+    const packageData = { ...result, storyboardImages:Object.fromEntries(Object.entries(storyboardImages[selectedProject] || {}).map(([key,value]) => [key,{ model:value.model, included:Boolean(value.dataUrl) }])) };
+    downloadFile('tegy-script-package.json', JSON.stringify(packageData,null,2), 'application/json');
+    return;
+  }
+  const { product, insight, script } = result;
+  if (activeScriptExportSection === 0) return downloadFile('campaign-brief.txt', `${product.productName}\n${product.description}\nAudience: ${product.audience}\nObjective: ${product.objective}\nTone: ${product.tone}`);
+  if (activeScriptExportSection === 1) return downloadFile('persona-viewer-profile.txt', (insight.personas || []).map((item,index)=>`PERSONA ${index+1}\n${item.name} · ${item.profile}\nInsight: ${item.insight}`).join('\n\n'));
+  if (activeScriptExportSection === 2) return downloadFile('hook-library.txt', [script.hook,...(insight.recommendedHooks || [])].join('\n'));
+  if (activeScriptExportSection === 4) {
+    const rows = [['Shot','Time','Visual','Dialogue / Narration','On-screen Text','Camera','Audio','Location','Cast','Props'],...(script.scenes || []).map(scene=>[scene.number,scene.seconds,scene.visual,scene.narration,scene.onScreenText,scene.camera,scene.audio,scene.location,scene.cast,scene.props])];
+    return downloadFile('ji-conte.csv', rows.map(row=>row.map(csvCell).join(',')).join('\n'), 'text/csv;charset=utf-8');
+  }
+  if (activeScriptExportSection === 5) return printVisualStoryboard(result);
+  if (activeScriptExportSection === 6) return downloadFile('script-versions.json', JSON.stringify(outputs[selectedProject] || [],null,2), 'application/json');
+  return downloadFile('script.txt', `${script.title}\n\nHOOK / COLD OPEN\n${script.hook}\n\nFULL SCRIPT\n${script.fullScript}\n\nCTA\n${script.cta}`);
+}
+
+function printVisualStoryboard(result) {
+  const images = storyboardImages[selectedProject] || {};
+  const cards = (result.script.scenes || []).map((scene,index)=>{ const image=images[storyboardKey(result,index)]; return `<article>${image ? `<img src="${image.dataUrl}">` : '<div class="empty">IMAGE PENDING</div>'}<h3>SHOT ${index+1} · ${escapeHtml(scene.seconds)}</h3><p>${escapeHtml(scene.visual)}</p><small>${escapeHtml(scene.narration)}</small></article>`; }).join('');
+  const popup = window.open('', '_blank');
+  if (!popup) return;
+  popup.document.write(`<title>${escapeHtml(result.script.title)} · 絵コンテ</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#17191d}h1{font-size:22px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}article{border:1px solid #ddd;padding:12px;break-inside:avoid}img,.empty{width:100%;aspect-ratio:16/9;object-fit:cover;background:#f2f3f5;display:grid;place-items:center}.empty{display:flex;align-items:center;justify-content:center;color:#999}h3{font-size:12px}p,small{font-size:10px;line-height:1.5}@media print{button{display:none}}</style><h1>${escapeHtml(result.script.title)} · 絵コンテ</h1><button onclick="print()">Print / Save PDF</button><div class="grid">${cards}</div>`);
+  popup.document.close();
 }
 
 async function runScriptWorkspace() {
