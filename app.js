@@ -306,16 +306,69 @@ function renderDeliveryWorkspace(key, node) {
     const form = $('shadowAuditForm');
     if (form) form.onsubmit = event => { event.preventDefault(); runShadowAudit(); };
   }
+  if (key === 'script') {
+    const form = $('scriptWorkspaceForm');
+    if (form) form.onsubmit = event => { event.preventDefault(); runScriptWorkspace(); };
+    const save = $('saveScriptEdits');
+    if (save) save.onclick = saveScriptWorkspaceEdits;
+  }
 }
 
 function deliveryCenterMarkup(type) {
   if (type === 'animation') return `<div class="animation-director"><div class="director-toolbar"><button class="active">All Assets</button><button>Characters</button><button>Scenes</button><button>References</button><button class="create-asset">＋ Create Asset</button></div><div class="animation-hero"><div><small>DIRECTOR'S BOARD</small><h2>Good afternoon, director!</h2><p>まず世界観とキャラクターを固定して、シーンとショットを組み立てます。</p></div><div class="play-orb">▷</div></div><h3>Style & Character Assets</h3><div class="asset-grid"><article class="asset-card character"><div><span>CHARACTER</span><b>Hero Character</b></div></article><article class="asset-card style"><div><span>STYLE</span><b>Soft 3D / Warm light</b></div></article><article class="asset-card scene"><div><span>SCENE</span><b>Morning Interior</b></div></article></div><div class="shot-board"><div><h3>Scene 01 · Opening</h3><span>3 shots · 8 sec</span></div><div class="shot-strip"><article><b>01</b><p>Establishing shot</p><span>00:00–00:02</span></article><article><b>02</b><p>Character close-up</p><span>00:02–00:05</span></article><article><b>03</b><p>Product reveal</p><span>00:05–00:08</span></article><button>＋</button></div></div></div>`;
-  if (type === 'script') return `<div class="persona-board"><section><small>CAMPAIGN INPUT</small><h3>Target & Requirement</h3><div class="editable-box">30〜40代の働く女性。安心感があり、押しつけない30秒広告。</div></section><section class="persona-results"><small>CAMPAIGN PERSONA</small><div><article><span>Persona A · Selected</span><h3>忙しい比較検討層</h3><p>情報は欲しいが、営業的な表現を避けたい。</p><dl><dt>Pain</dt><dd>判断材料が多く、信頼できる違いが見えない</dd><dt>Trigger</dt><dd>具体例と透明な説明</dd></dl></article><article><span>Persona B</span><h3>慎重な初回検討層</h3><p>失敗への不安が大きく、まず安心材料を探す。</p><dl><dt>Pain</dt><dd>自分に合うか分からない</dd><dt>Trigger</dt><dd>第三者視点と利用の流れ</dd></dl></article></div></section><section class="script-editor"><small>HOOK & SCRIPT</small><blockquote>「ちゃんと選びたい。でも、何を信じればいい？」</blockquote><p contenteditable="true">Scene 1 — 日常の迷いを提示<br>Scene 2 — 商品が解決する具体的な理由<br>Scene 3 — 信頼材料と自然な CTA</p></section></div>`;
+  if (type === 'script') return scriptWorkspaceMarkup(outputs[selectedProject]?.at(-1));
   if (type === 'shadow') return shadowWorkspaceMarkup(shadowOutputs[selectedProject]?.at(-1));
   if (type === 'video') return `<div class="video-board"><div class="video-preview"><button>▷</button><span>00:00 / 00:30</span></div><div class="video-meta"><section><small>REFERENCE ANALYSIS</small><h3>Hook → Proof → CTA</h3><p>最初の3秒、画面変化、字幕密度、CTA の構造を参考動画から抽出。</p></section><section><small>REVIEW STATUS</small><h3>Rough Cut v03</h3><p>2 comments waiting · Mina Rho</p></section></div><div class="timeline"><b>V1</b><i></i><i></i><i></i><b>A1</b><i></i><i></i></div></div>`;
   if (type === 'operations') return `<div class="operations-board"><div class="calendar-head"><button>←</button><h2>August 2026</h2><button>→</button><span>＋ New Post</span></div><div class="content-calendar">${['MON 3','TUE 4','WED 5','THU 6','FRI 7'].map((day,index)=>`<article><b>${day}</b>${index===1?'<div class="post youtube">YouTube<br><span>How-to video · 18:00</span></div>':''}${index===3?'<div class="post instagram">Instagram<br><span>Reels · Approved</span></div>':''}</article>`).join('')}</div><div class="performance-row"><article><small>VIEWS</small><b>128.4K</b><span>↑ 18%</span></article><article><small>ENGAGEMENT</small><b>6.8%</b><span>↑ 1.2%</span></article><article><small>LEADS</small><b>342</b><span>↑ 24%</span></article></div></div>`;
   if (type === 'brand') return `<div class="brand-board"><div class="brand-hero"><span>BRAND ESSENCE</span><h2>Trust that feels human.</h2><p>専門性を、生活者が理解できる言葉と温度で届ける。</p></div><div class="brand-grid"><article><small>POSITIONING</small><h3>Clear expertise</h3><p>複雑な情報を透明で分かりやすく。</p></article><article><small>TONE OF VOICE</small><h3>Calm · Honest · Warm</h3><p>強く売り込まず、判断を助ける。</p></article><article><small>DO</small><h3>Evidence first</h3><p>具体例、根拠、利用者視点。</p></article><article><small>DON'T</small><h3>Fear or pressure</h3><p>過度な断定と不安訴求を避ける。</p></article></div></div>`;
   return `<div class="manager-board"><div class="manager-summary"><article><small>WORK</small><b>6</b><span>2 in progress</span></article><article><small>REVIEWS</small><b>3</b><span>Client decision</span></article><article><small>DEADLINE</small><b>28 Aug</b><span>27 days left</span></article></div><div class="dependency-map"><div>Research</div><i>→</i><div>AI Script</div><i>→</i><div>Video</div><i>→</i><div>Operations</div></div></div>`;
+}
+
+function scriptWorkspaceMarkup(result) {
+  const script = result?.script;
+  const scenes = script?.scenes || [];
+  return `<div class="multi-script-board"><form id="scriptWorkspaceForm" class="script-brief-form"><div class="script-type-head"><div><small>SCRIPT TYPE</small><h2>制作する台本を選択</h2></div><button type="submit">Generate Script →</button></div><div class="script-type-grid"><label><input type="radio" name="scriptType" value="advertisement" ${result?.scriptType !== 'youtube_shooting' ? 'checked' : ''}><span><b>Advertisement Script</b><small>Hook · Benefit · Proof · CTA</small></span></label><label><input type="radio" name="scriptType" value="youtube_shooting" ${result?.scriptType === 'youtube_shooting' ? 'checked' : ''}><span><b>YouTube Shooting Script</b><small>Cold Open · A-roll · B-roll · Camera</small></span></label></div><div class="script-mode-row"><label>Creation Mode<select name="creationMode"><option value="auto">AI Auto Generate</option><option value="manual">Manual Draft + AI Structure</option></select></label><label>Duration / Platform<input name="productionSettings" placeholder="例：YouTube 8分 / 16:9 / Studio shooting"></label></div><label>Production Brief<textarea name="message" required placeholder="商品・テーマ、視聴者、目的、Tone、必須内容、CTAなどを入力してください。"></textarea></label><label>Manual Draft（Manual mode）<textarea name="manualDraft" placeholder="既存の台本を貼り付けると、内容を保持したまま構成・尺・撮影指示を整理します。"></textarea></label></form>${script ? `<section class="production-script-editor"><header><div><small>${escapeHtml(result.scriptType === 'youtube_shooting' ? 'YOUTUBE SHOOTING SCRIPT' : 'ADVERTISEMENT SCRIPT')}</small><h2 contenteditable="true" data-script-field="title">${escapeHtml(script.title)}</h2></div><button id="saveScriptEdits">Save Edits</button></header><div class="script-editor-meta"><article><small>HOOK / COLD OPEN</small><p contenteditable="true" data-script-field="hook">${escapeHtml(script.hook)}</p></article><article><small>CONCEPT</small><p contenteditable="true" data-script-field="concept">${escapeHtml(script.concept)}</p></article></div><div class="full-script-edit"><small>FULL SCRIPT</small><p contenteditable="true" data-script-field="fullScript">${escapeHtml(script.fullScript)}</p></div><div class="shooting-table-wrap"><table class="shooting-script-table"><thead><tr><th>Shot / Time</th><th>Visual / Dialogue</th><th>Production</th></tr></thead><tbody>${scenes.map((scene,index)=>`<tr data-scene-index="${index}"><td><b>${scene.number}</b><span contenteditable="true" data-scene-field="seconds">${escapeHtml(scene.seconds)}</span><em>${escapeHtml(scene.shotType || '')}</em></td><td><strong contenteditable="true" data-scene-field="visual">${escapeHtml(scene.visual)}</strong><p contenteditable="true" data-scene-field="narration">${escapeHtml(scene.narration)}</p><small contenteditable="true" data-scene-field="onScreenText">${escapeHtml(scene.onScreenText)}</small></td><td><p><b>Camera</b> <span contenteditable="true" data-scene-field="camera">${escapeHtml(scene.camera || '')}</span></p><p><b>Audio</b> <span contenteditable="true" data-scene-field="audio">${escapeHtml(scene.audio || '')}</span></p><p><b>Location</b> ${escapeHtml(scene.location || '')}</p><p><b>Cast / Props</b> ${escapeHtml(scene.cast || '')} · ${escapeHtml(scene.props || '')}</p></td></tr>`).join('')}</tbody></table></div></section>` : '<div class="script-workspace-empty"><span>✎</span><h3>Script Briefを入力してください</h3><p>AI Auto GenerateまたはManual Draftから、制作可能な台本を作成します。</p></div>'}</div>`;
+}
+
+function saveScriptWorkspaceEdits() {
+  const latest = outputs[selectedProject]?.at(-1);
+  if (!latest) return;
+  document.querySelectorAll('[data-script-field]').forEach(element => { latest.script[element.dataset.scriptField] = element.textContent.trim(); });
+  document.querySelectorAll('[data-scene-index]').forEach(row => {
+    const scene = latest.script.scenes[Number(row.dataset.sceneIndex)];
+    row.querySelectorAll('[data-scene-field]').forEach(element => { scene[element.dataset.sceneField] = element.textContent.trim(); });
+  });
+  saveOutputs();
+  $('workspaceSaveStatus').textContent = '✓ Manual edits saved';
+}
+
+async function runScriptWorkspace() {
+  const form = $('scriptWorkspaceForm');
+  const node = nodes.find(item => item.id === activeWorkspaceNodeId);
+  if (!form || !node) return;
+  const data = Object.fromEntries(new FormData(form));
+  data.message = `${data.message}\nProduction settings: ${data.productionSettings || 'Not specified'}`;
+  $('runWorkspaceAgent').disabled = true;
+  form.querySelector('button[type="submit"]').disabled = true;
+  $('workspaceSaveStatus').textContent = '● Script Skills running...';
+  try {
+    const latestResearch = researchOutputs[selectedProject]?.at(-1) || null;
+    const response = await fetch('/api/script', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ message:data.message, scriptType:data.scriptType, creationMode:data.creationMode, manualDraft:data.manualDraft, projectContext:buildProjectContext(), researchContext:latestResearch ? { marketInsight:latestResearch.marketInsight, strategy:latestResearch.strategy } : null }) });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || payload.error || 'Script generation failed.');
+    outputs[selectedProject] ||= [];
+    outputs[selectedProject].push(payload);
+    saveOutputs();
+    node.status = 'Completed'; node.progress = 100; node.detail = payload.script.title; saveProjectWorks();
+    renderDeliveryWorkspace('script', node);
+    $('workspaceSaveStatus').textContent = '✓ Script generated and saved';
+  } catch (error) {
+    $('workspaceSaveStatus').textContent = error.message;
+  } finally {
+    $('runWorkspaceAgent').disabled = false;
+    const currentForm = $('scriptWorkspaceForm');
+    if (currentForm) currentForm.querySelector('button[type="submit"]').disabled = false;
+  }
 }
 
 function shadowWorkspaceMarkup(result) {
@@ -362,6 +415,7 @@ async function runActiveWorkspaceAgent() {
   if (!node) return;
   const key = getWorkspaceKey(node);
   if (key === 'shadow') return runShadowAudit();
+  if (key === 'script') return runScriptWorkspace();
   if (key !== 'research') {
     $('workspaceSaveStatus').textContent = key === 'script' ? 'AI Script は下部チャットから実行できます' : 'この Agent の実行コードは次の開発フェーズです';
     return;

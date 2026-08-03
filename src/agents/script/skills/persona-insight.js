@@ -23,11 +23,11 @@ const schema = {
   required: ['personas', 'selectedPersonaIndex', 'selectionReason', 'creativeDirection', 'recommendedHooks']
 };
 
-export function buildPersonaAndInsight(product, researchContext) {
+export function buildPersonaAndInsight(product, researchContext, scriptType) {
   return generateStructured({
     schema,
-    prompt: `You are TEGY's Persona & Insight Skill for performance and organic social advertising.
-Create exactly two distinct, realistic Campaign Personas for this specific advertisement. Research already owns the Project-level Market Personas and Market Insight. Use that shared research as the evidence foundation, then narrow it using this campaign's product, audience, objective and platform.
+    prompt: `You are TEGY's Audience & Insight Skill for ${scriptType.label}.
+Create exactly two distinct audience profiles. For Advertisement Script, treat them as Campaign Personas. For YouTube Shooting Script, treat them as Viewer Profiles defined by viewing intent, knowledge level, retention risk and desired takeaway. Research already owns the Project-level Market Personas and Market Insight. Use that shared research as the evidence foundation, then narrow it for this production.
 Go beyond demographics: identify daily pain, hidden emotional insight, motivation, purchase objections, triggers, and social-media behavior. Select the persona most suitable for this ad and explain why. Do not present stereotypes as facts. Match the product brief's language.
 
 Shared Research context: ${JSON.stringify(researchContext || {})}
