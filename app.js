@@ -16,7 +16,7 @@ const baseNodes = [
   { id: 'pm', name: 'AI Project Manager', icon: '✦', cls: 'pm', x: 36, y: 6, status: 'Thinking...', type: 'progress', detail: 'プロジェクトを推進中です', progress: 55 },
   { id: 'research', name: 'Research Agent', icon: '◎', cls: 'mint-bg', x: 9, y: 38, status: 'In Progress', type: 'progress', detail: '市場・競合・広告リサーチ', progress: 48 },
   { id: 'script', name: 'Script Agent', icon: '✎', cls: 'cyan-bg', x: 40, y: 34, status: 'Ready', type: 'progress', detail: '商品情報をチャットに入力してください', progress: 0 },
-  { id: 'animation', name: 'Animation Agent', icon: '▷', cls: 'pink-bg', x: 69, y: 35, status: 'Waiting', type: 'waiting', detail: 'スクリプト完了後に開始', progress: 0 },
+  { id: 'animation', name: 'AI Anime Agent', icon: '▷', cls: 'pink-bg', x: 69, y: 35, status: 'Waiting', type: 'waiting', detail: 'Approved Script完了後に開始', progress: 0 },
   { id: 'shadow', name: 'ShadowBan Agent', icon: '⬡', cls: 'orange-bg', x: 51, y: 67, status: 'Ready', type: 'progress', detail: 'YouTubeチャンネル分析準備完了', progress: 0 }
 ];
 
@@ -29,6 +29,7 @@ const storyboardImages = {};
 const projectWorks = loadProjectWorks();
 const researchOutputs = loadResearchOutputs();
 const shadowOutputs = loadShadowOutputs();
+const animeOutputs = loadAnimeOutputs();
 let activeWorkspaceNodeId = null;
 let activeScriptExportSection = 3;
 
@@ -101,6 +102,15 @@ function loadShadowOutputs() {
 
 function saveShadowOutputs() {
   localStorage.setItem('tegy-shadow-outputs-v2-ja', JSON.stringify(shadowOutputs));
+}
+
+function loadAnimeOutputs() {
+  try { return JSON.parse(localStorage.getItem('tegy-anime-outputs-v1') || '{}'); }
+  catch { return {}; }
+}
+
+function saveAnimeOutputs() {
+  localStorage.setItem('tegy-anime-outputs-v1', JSON.stringify(animeOutputs));
 }
 
 function buildProjectContext() {
@@ -238,7 +248,7 @@ function renderInspectorDetails(node) {
   const config = {
     research: { steps:['Project brief','Market & competitor research','Market Persona / Insight','Research Report'], task:'市場・競合・広告リサーチを整理' },
     script: { steps:['Campaign brief','Campaign Persona','Script & Hook','Scene / Storyboard'], task:'Campaign Persona と Script を作成' },
-    animation: { steps:['Creative brief','Style & characters','Scenes & shots','Animation export'], task:'スタイルとキャラクター資産を設計' },
+    animation: { steps:['Anime brief','Anime script / 字コンテ','Style & character assets','絵コンテ / Image-to-Video'], task:'Anime制作とAsset continuityを管理' },
     shadow: { steps:['Channel input','Health check','SEO action plan','Monitoring report'], task:'チャンネル健全性と検索露出を診断' },
     video: { steps:['Video brief','Reference analysis','Edit review','Final delivery'], task:'参考動画と Shot Plan を整理' },
     operations: { steps:['Channel setup','Content calendar','Publish & monitor','Monthly report'], task:'公開予定と運用タスクを管理' },
@@ -266,7 +276,7 @@ function openFullWorkspace(id) {
   const stepMap = {
     research: ['01. Project Brief','02. Company & Product','03. Market Research','04. Competitors','05. Ads & Organic','06. Market Insight','07. Report'],
     script: ['01. Campaign Brief','02. Persona / Viewer','03. Hook Library','04. Script Editor','05. Scenes / 字コンテ','06. Visual Storyboard / 絵コンテ','07. Versions'],
-    animation: ['01. Creative Brief','02. Style & Characters','03. Scenes & Shots','04. Animate','05. Compose & Export'],
+    animation: ['01. Anime Brief','02. Anime Script','03. 字コンテ','04. Style & Characters','05. 絵コンテ','06. Image-to-Video','07. Delivery'],
     shadow: ['01. Channel Input','02. Health Check','03. Content Audit','04. SEO Actions','05. Monitoring Report'],
     video: ['01. Video Brief','02. References','03. Shot Plan','04. Edit & Review','05. Delivery'],
     operations: ['01. Channel Setup','02. Content Calendar','03. Publish','04. Performance','05. Report'],
@@ -295,7 +305,7 @@ function getWorkspaceKey(node) {
 function renderDeliveryWorkspace(key, node) {
   const definitions = {
     script: { kicker:'SCRIPT PRODUCTION', title:'Multi-format Script Workspace', copy:'AdvertisementまたはYouTube撮影台本を生成・編集し、字コンテから絵コンテまで制作します。', nav:['Campaign Brief','Persona / Viewer','Hook Library','Script Editor','Scenes / 字コンテ','Visual Storyboard / 絵コンテ','Versions'], center:'script', insight:'Script Typeに応じて構成と撮影項目を切り替え、Project / Research Contextを共通利用します。', exports:['Export Current Section','Export Full Package'] },
-    animation: { kicker:'ANIMATION DIRECTOR', title:'Bring the story to life', copy:'キャラクター、世界観、シーン、ショットを一つの制作ボードで管理します。', nav:['Creative Brief','Style References','Characters','Scenes','Shots','Asset Library'], center:'animation', insight:'キャラクターと背景の一貫性を先に固定し、ショットごとの再生成を減らします。', exports:['Preview MP4','Asset Package'] },
+    animation: { kicker:'ANIME DIRECTOR', title:'AI Anime Production Workspace', copy:'Anime Script、字コンテ、Style / Character continuity、絵コンテからImage-to-Videoまでを管理します。', nav:['Anime Brief','Anime Script','字コンテ','Style & Characters','絵コンテ','Image-to-Video','Delivery'], center:'animation', insight:'動画生成前にScript、Character、Style、Shotを承認し、再生成コストとcontinuity崩れを抑えます。', exports:['Export 字コンテ','Export Anime Package'] },
     shadow: { kicker:'CHANNEL HEALTH', title:'Shadow Ban / SEO Audit', copy:'チャンネルの健全性、検索露出、投稿パターン、改善アクションをまとめます。', nav:['Channel Overview','Health Signals','Content Audit','Keywords','Action Plan','Monitoring'], center:'shadow', insight:'単一指標で Shadow Ban と断定せず、露出・検索・視聴維持・投稿履歴を組み合わせて評価します。', exports:['Audit Report','Action CSV'] },
     video: { kicker:'VIDEO PRODUCTION', title:'Video Production Board', copy:'参考動画から Shot Plan、素材、編集レビュー、最終納品までを管理します。', nav:['Video Brief','References','Shot List','Footage','Edit Review','Deliverables'], center:'video', insight:'参考動画は見た目だけでなく、Hook、尺、画面変化、CTA の構造として分解します。', exports:['Review Link','Delivery Package'] },
     operations: { kicker:'CHANNEL OPERATIONS', title:'Publishing & Growth', copy:'投稿計画、承認、公開、数値、次の改善を一つの運用画面にまとめます。', nav:['Channel Setup','Calendar','Approval Queue','Publishing','Performance','Reports'], center:'operations', insight:'制作数ではなく、公開後の学習が次の Research と Script に戻る運用ループを作ります。', exports:['Monthly Report','Calendar CSV'] },
@@ -321,16 +331,84 @@ function renderDeliveryWorkspace(key, node) {
     document.querySelectorAll('[data-export-index]').forEach(button => { button.onclick = () => exportScriptPackage(Number(button.dataset.exportIndex)); });
     document.querySelectorAll('.delivery-nav nav button').forEach((button,index) => { button.onclick = () => { activeScriptExportSection = index; document.querySelectorAll('.delivery-nav nav button').forEach(item => item.classList.remove('active')); button.classList.add('active'); }; });
   }
+  if (key === 'animation') {
+    const form = $('animeWorkspaceForm');
+    if (form) form.onsubmit = event => { event.preventDefault(); runAnimeWorkspace(); };
+    document.querySelectorAll('[data-anime-shot]').forEach(button => { button.onclick = () => generateAnimeStoryboardFrame(button.dataset.animeShot); });
+    document.querySelectorAll('[data-export-index]').forEach(button => { button.onclick = () => exportAnimePackage(Number(button.dataset.exportIndex)); });
+  }
 }
 
 function deliveryCenterMarkup(type) {
-  if (type === 'animation') return `<div class="animation-director"><div class="director-toolbar"><button class="active">All Assets</button><button>Characters</button><button>Scenes</button><button>References</button><button class="create-asset">＋ Create Asset</button></div><div class="animation-hero"><div><small>DIRECTOR'S BOARD</small><h2>Good afternoon, director!</h2><p>まず世界観とキャラクターを固定して、シーンとショットを組み立てます。</p></div><div class="play-orb">▷</div></div><h3>Style & Character Assets</h3><div class="asset-grid"><article class="asset-card character"><div><span>CHARACTER</span><b>Hero Character</b></div></article><article class="asset-card style"><div><span>STYLE</span><b>Soft 3D / Warm light</b></div></article><article class="asset-card scene"><div><span>SCENE</span><b>Morning Interior</b></div></article></div><div class="shot-board"><div><h3>Scene 01 · Opening</h3><span>3 shots · 8 sec</span></div><div class="shot-strip"><article><b>01</b><p>Establishing shot</p><span>00:00–00:02</span></article><article><b>02</b><p>Character close-up</p><span>00:02–00:05</span></article><article><b>03</b><p>Product reveal</p><span>00:05–00:08</span></article><button>＋</button></div></div></div>`;
+  if (type === 'animation') return animeWorkspaceMarkup(animeOutputs[selectedProject]?.at(-1));
   if (type === 'script') return scriptWorkspaceMarkup(outputs[selectedProject]?.at(-1));
   if (type === 'shadow') return shadowWorkspaceMarkup(shadowOutputs[selectedProject]?.at(-1));
   if (type === 'video') return `<div class="video-board"><div class="video-preview"><button>▷</button><span>00:00 / 00:30</span></div><div class="video-meta"><section><small>REFERENCE ANALYSIS</small><h3>Hook → Proof → CTA</h3><p>最初の3秒、画面変化、字幕密度、CTA の構造を参考動画から抽出。</p></section><section><small>REVIEW STATUS</small><h3>Rough Cut v03</h3><p>2 comments waiting · Mina Rho</p></section></div><div class="timeline"><b>V1</b><i></i><i></i><i></i><b>A1</b><i></i><i></i></div></div>`;
   if (type === 'operations') return `<div class="operations-board"><div class="calendar-head"><button>←</button><h2>August 2026</h2><button>→</button><span>＋ New Post</span></div><div class="content-calendar">${['MON 3','TUE 4','WED 5','THU 6','FRI 7'].map((day,index)=>`<article><b>${day}</b>${index===1?'<div class="post youtube">YouTube<br><span>How-to video · 18:00</span></div>':''}${index===3?'<div class="post instagram">Instagram<br><span>Reels · Approved</span></div>':''}</article>`).join('')}</div><div class="performance-row"><article><small>VIEWS</small><b>128.4K</b><span>↑ 18%</span></article><article><small>ENGAGEMENT</small><b>6.8%</b><span>↑ 1.2%</span></article><article><small>LEADS</small><b>342</b><span>↑ 24%</span></article></div></div>`;
   if (type === 'brand') return `<div class="brand-board"><div class="brand-hero"><span>BRAND ESSENCE</span><h2>Trust that feels human.</h2><p>専門性を、生活者が理解できる言葉と温度で届ける。</p></div><div class="brand-grid"><article><small>POSITIONING</small><h3>Clear expertise</h3><p>複雑な情報を透明で分かりやすく。</p></article><article><small>TONE OF VOICE</small><h3>Calm · Honest · Warm</h3><p>強く売り込まず、判断を助ける。</p></article><article><small>DO</small><h3>Evidence first</h3><p>具体例、根拠、利用者視点。</p></article><article><small>DON'T</small><h3>Fear or pressure</h3><p>過度な断定と不安訴求を避ける。</p></article></div></div>`;
   return `<div class="manager-board"><div class="manager-summary"><article><small>WORK</small><b>6</b><span>2 in progress</span></article><article><small>REVIEWS</small><b>3</b><span>Client decision</span></article><article><small>DEADLINE</small><b>28 Aug</b><span>27 days left</span></article></div><div class="dependency-map"><div>Research</div><i>→</i><div>AI Script</div><i>→</i><div>Video</div><i>→</i><div>Operations</div></div></div>`;
+}
+
+function animeShotList(result) {
+  return (result?.textStoryboard?.scenes || []).flatMap(scene => (scene.shots || []).map(shot => ({ ...shot, sceneTitle:scene.title, location:scene.location })));
+}
+
+function animeImageKey(result, shotNumber) {
+  return `anime:${result.createdAt}:${shotNumber}`;
+}
+
+function animeWorkspaceMarkup(result) {
+  const imported = outputs[selectedProject]?.at(-1);
+  const treatment = result?.treatment;
+  const shots = animeShotList(result);
+  const images = storyboardImages[selectedProject] || {};
+  return `<div class="anime-production-board"><form id="animeWorkspaceForm" class="anime-brief-form"><div class="anime-form-head"><div><small>01 · ANIME BRIEF</small><h2>Director Brief</h2><p>AnimeはStyle、Character、Shot continuityを先に固定してから動画化します。</p></div><button type="submit">Build Anime Plan →</button></div><div class="anime-mode-grid"><label>Script Source<select name="mode"><option value="import" ${imported ? 'selected' : ''}>Import approved AI Script</option><option value="auto">Generate Anime Script</option><option value="manual">Manual Script</option></select></label><label>Duration<input name="durationSeconds" type="number" min="5" value="${treatment?.targetDurationSeconds || 30}"></label><label>Aspect Ratio<select name="aspectRatio"><option>16:9</option><option>9:16</option><option>1:1</option></select></label><label>Anime Style<input name="style" value="${escapeHtml(treatment?.visualApproach || '2D anime · cinematic lighting')}"></label></div><label>Creative Requirement<textarea name="requirement" required placeholder="Story、target、mood、必須シーン、Character、商品、禁止表現など"></textarea></label><label>Manual Script<textarea name="manualScript" placeholder="Manual modeの場合のみ、元のScriptを貼り付けてください。"></textarea></label></form>${treatment ? `<section class="anime-treatment"><div class="anime-treatment-hero"><small>02 · ANIME SCRIPT</small><h2>${escapeHtml(treatment.title)}</h2><p>${escapeHtml(treatment.logline)}</p><div><span>${escapeHtml(treatment.aspectRatio)}</span><span>${treatment.targetDurationSeconds}s</span><span>${escapeHtml(treatment.tone)}</span></div></div><article><small>FULL SCRIPT</small><p contenteditable="true">${escapeHtml(treatment.fullScript)}</p></article></section><section class="anime-assets"><header><div><small>04 · STYLE & CHARACTERS</small><h2>Continuity Bible</h2></div><span>${treatment.characters.length} Characters</span></header><div>${treatment.characters.map(character=>`<article><div class="anime-asset-placeholder">◇</div><small>${escapeHtml(character.role)}</small><h3>${escapeHtml(character.name)}</h3><p>${escapeHtml(character.description)}</p><ul>${character.continuityRules.map(rule=>`<li>${escapeHtml(rule)}</li>`).join('')}</ul></article>`).join('')}<article class="style-bible-card"><div class="anime-asset-placeholder">✦</div><small>STYLE BIBLE</small><h3>${escapeHtml(treatment.visualApproach)}</h3><ul>${treatment.productionRules.map(rule=>`<li>${escapeHtml(rule)}</li>`).join('')}</ul></article></div></section><section class="anime-ji-conte"><header><small>03 · 字コンテ</small><h2>Scene / Shot Plan</h2></header><div class="anime-shot-table"><div class="anime-shot-row head"><span>Shot / Time</span><span>Visual / Action</span><span>Direction / Audio</span></div>${shots.map(shot=>`<div class="anime-shot-row"><span><b>${escapeHtml(shot.shotNumber)}</b><small>${shot.seconds}s · ${escapeHtml(shot.location)}</small></span><span><b>${escapeHtml(shot.visual)}</b><p>${escapeHtml(shot.characterAction)}</p><em>${escapeHtml(shot.dialogueNarration)}</em></span><span><b>${escapeHtml(shot.camera)}</b><p>${escapeHtml(shot.audio)}</p><small>${escapeHtml(shot.transition)}</small></span></div>`).join('')}</div></section><section class="anime-e-conte"><header><div><small>05 · 絵コンテ</small><h2>Storyboard Frames</h2></div></header><div class="anime-storyboard-grid">${shots.map(shot=>{const image=images[animeImageKey(result,shot.shotNumber)];return `<article><div>${image ? `<img src="${image.dataUrl}" alt="${escapeHtml(shot.shotNumber)}">` : `<span>${escapeHtml(shot.shotNumber)}</span>`}</div><section><b>${escapeHtml(shot.visual)}</b><p>${escapeHtml(shot.camera)}</p><button data-anime-shot="${escapeHtml(shot.shotNumber)}">${image ? 'Regenerate' : 'Generate Frame'}</button></section></article>`}).join('')}</div></section><section class="anime-video-queue"><small>06 · IMAGE-TO-VIDEO</small><h2>Animation Queue</h2><p>Approved Storyboard Frameを起点に、Shot単位で動画化します。Video model connectionは次の実装段階です。</p><div>${shots.map(shot=>`<article><b>${escapeHtml(shot.shotNumber)}</b><span>${images[animeImageKey(result,shot.shotNumber)] ? 'Ready for animation' : 'Waiting for approved frame'}</span><button disabled>Send to Video</button></article>`).join('')}</div></section>` : '<div class="anime-empty"><span>▷</span><h3>Anime Briefを作成してください</h3><p>Script → Treatment → 字コンテ → Style / Character → 絵コンテの順で生成します。</p></div>'}</div>`;
+}
+
+async function runAnimeWorkspace() {
+  const form = $('animeWorkspaceForm');
+  const node = nodes.find(item => item.id === activeWorkspaceNodeId);
+  if (!form || !node) return;
+  const data = Object.fromEntries(new FormData(form));
+  data.durationSeconds = Number(data.durationSeconds || 30);
+  const importedScript = data.mode === 'import' ? outputs[selectedProject]?.at(-1) : null;
+  $('runWorkspaceAgent').disabled = true;
+  form.querySelector('button[type="submit"]').disabled = true;
+  $('workspaceSaveStatus').textContent = '● Anime Director Skills running...';
+  try {
+    const latestResearch = researchOutputs[selectedProject]?.at(-1) || null;
+    const response = await fetch('/api/anime-script', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ projectContext:buildProjectContext(), researchContext:latestResearch ? {marketInsight:latestResearch.marketInsight,strategy:latestResearch.strategy}:null, campaignScript:importedScript, animeBrief:data }) });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || payload.error || 'Anime plan generation failed.');
+    animeOutputs[selectedProject] ||= [];
+    animeOutputs[selectedProject].push(payload); saveAnimeOutputs();
+    node.status='In Progress'; node.progress=65; node.detail=`字コンテ完成 · ${animeShotList(payload).length} shots`; saveProjectWorks();
+    renderDeliveryWorkspace('animation',node);
+    $('workspaceSaveStatus').textContent='✓ Anime Script & 字コンテ saved';
+  } catch(error) { $('workspaceSaveStatus').textContent=error.message; }
+  finally { $('runWorkspaceAgent').disabled=false; const current=$('animeWorkspaceForm'); if(current) current.querySelector('button[type="submit"]').disabled=false; }
+}
+
+async function generateAnimeStoryboardFrame(shotNumber) {
+  const result=animeOutputs[selectedProject]?.at(-1);
+  const shot=animeShotList(result).find(item=>item.shotNumber===shotNumber);
+  const button=document.querySelector(`[data-anime-shot="${CSS.escape(shotNumber)}"]`);
+  if(!result||!shot||!button)return;
+  button.disabled=true; button.textContent='Generating...';
+  try{
+    const response=await fetch('/api/storyboard-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene:{visual:shot.imagePrompt,characterAction:shot.characterAction,camera:shot.camera,location:shot.location},projectContext:buildProjectContext(),scriptContext:{title:result.treatment.title,concept:result.treatment.visualApproach,characters:result.treatment.characters,productionRules:result.treatment.productionRules},aspectRatio:result.treatment.aspectRatio})});
+    const payload=await response.json(); if(!response.ok)throw new Error(payload.detail||payload.error||'Frame generation failed.');
+    storyboardImages[selectedProject]||={}; storyboardImages[selectedProject][animeImageKey(result,shotNumber)]=payload;
+    renderDeliveryWorkspace('animation',nodes.find(item=>item.id===activeWorkspaceNodeId)); $('workspaceSaveStatus').textContent=`✓ ${shotNumber} frame generated`;
+  }catch(error){button.disabled=false;button.textContent='Generate Frame';$('workspaceSaveStatus').textContent=error.message;}
+}
+
+function exportAnimePackage(fullPackage) {
+  const result=animeOutputs[selectedProject]?.at(-1); if(!result)return;
+  if(fullPackage===1)return downloadFile('tegy-anime-package.json',JSON.stringify(result,null,2),'application/json');
+  const rows=[['Scene','Shot','Seconds','Visual','Character Action','Camera','Dialogue / Narration','Audio','Transition','Image Prompt']];
+  (result.textStoryboard.scenes||[]).forEach(scene=>(scene.shots||[]).forEach(shot=>rows.push([scene.sceneNumber,shot.shotNumber,shot.seconds,shot.visual,shot.characterAction,shot.camera,shot.dialogueNarration,shot.audio,shot.transition,shot.imagePrompt])));
+  downloadFile('anime-ji-conte.csv',rows.map(row=>row.map(csvCell).join(',')).join('\n'),'text/csv;charset=utf-8');
 }
 
 function scriptWorkspaceMarkup(result) {
@@ -500,6 +578,7 @@ async function runActiveWorkspaceAgent() {
   const key = getWorkspaceKey(node);
   if (key === 'shadow') return runShadowAudit();
   if (key === 'script') return runScriptWorkspace();
+  if (key === 'animation') return runAnimeWorkspace();
   if (key !== 'research') {
     $('workspaceSaveStatus').textContent = key === 'script' ? 'AI Script は下部チャットから実行できます' : 'この Agent の実行コードは次の開発フェーズです';
     return;
@@ -666,7 +745,7 @@ function createProject() {
 
 function addAgent(name) {
   if (!selectedProject) return;
-  const map = { 'Research Agent': ['◎', 'mint-bg'], 'Script Agent': ['✎', 'cyan-bg'], 'Animation Agent': ['▷', 'pink-bg'], 'ShadowBan Agent': ['⬡', 'orange-bg'], 'Video Agent': ['▧', 'pink-bg'], 'Operations Agent': ['⌘', 'mint-bg'] };
+  const map = { 'Research Agent': ['◎', 'mint-bg'], 'Script Agent': ['✎', 'cyan-bg'], 'AI Anime Agent': ['▷', 'pink-bg'], 'Animation Agent': ['▷', 'pink-bg'], 'ShadowBan Agent': ['⬡', 'orange-bg'], 'Video Agent': ['▧', 'pink-bg'], 'Operations Agent': ['⌘', 'mint-bg'] };
   const [icon, cls] = map[name] || ['✦', 'cyan-bg'];
   const newWork = { id: `n${Date.now()}`, name, icon, cls, x: 38 + Math.random() * 28, y: 45 + Math.random() * 22, status: 'Ready', type: 'progress', detail: '新しいWorkを追加しました', progress: 0 };
   nodes.push(newWork);
