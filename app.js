@@ -374,6 +374,7 @@ function openFullWorkspace(id) {
     manager: ['01. Project Setup','02. Work Planning','03. Dependencies','04. Review','05. Delivery']
   };
   const steps = stepMap[workspaceKey] || stepMap.manager;
+  $('workspaceSteps').classList.remove('hidden');
   $('workspaceSteps').innerHTML = steps.map((step,index) => `<button class="${index === 0 ? 'done' : index === 1 ? 'active' : ''}">${escapeHtml(step)}<span>${index === 0 ? '✓' : index === 1 ? 'In Progress' : 'Pending'}</span></button>`).join('');
   $('researchWorkspace').classList.toggle('hidden', workspaceKey !== 'research');
   $('genericWorkspace').classList.toggle('hidden', workspaceKey === 'research');
@@ -412,6 +413,7 @@ function renderDeliveryWorkspace(key, node) {
     const latestScriptResult = outputs[selectedProject]?.at(-1);
     const editor = document.querySelector('.production-script-editor');
     if (editor && latestScriptResult) editor.insertAdjacentHTML('beforeend', visualStoryboardMarkup(latestScriptResult));
+    prepareScriptSections();
     const form = $('scriptWorkspaceForm');
     if (form) form.onsubmit = event => { event.preventDefault(); runScriptWorkspace(); };
     const save = $('saveScriptEdits');
@@ -419,7 +421,7 @@ function renderDeliveryWorkspace(key, node) {
     document.querySelectorAll('[data-generate-storyboard]').forEach(button => { button.onclick = () => generateStoryboardFrame(Number(button.dataset.generateStoryboard)); });
     document.querySelectorAll('[data-download-storyboard]').forEach(button => { button.onclick = () => downloadStoryboardFrame(Number(button.dataset.downloadStoryboard)); });
     document.querySelectorAll('[data-export-index]').forEach(button => { button.onclick = () => exportScriptPackage(Number(button.dataset.exportIndex)); });
-    document.querySelectorAll('.delivery-nav nav button').forEach((button,index) => { button.onclick = () => { activeScriptExportSection = index; document.querySelectorAll('.delivery-nav nav button').forEach(item => item.classList.remove('active')); button.classList.add('active'); }; });
+    document.querySelectorAll('.delivery-nav nav button').forEach((button,index) => { button.onclick = () => showScriptSection(index); });
   }
   if (key === 'animation') {
     const form = $('animeWorkspaceForm');
@@ -515,6 +517,56 @@ function scriptWorkspaceMarkup(result) {
   const script = result?.script;
   const scenes = script?.scenes || [];
   return `<div class="multi-script-board"><form id="scriptWorkspaceForm" class="script-brief-form"><div class="script-type-head"><div><small>SCRIPT TYPE</small><h2>制作する台本を選択</h2></div><button type="submit">Generate Script →</button></div><div class="script-type-grid"><label><input type="radio" name="scriptType" value="advertisement" ${result?.scriptType !== 'youtube_shooting' ? 'checked' : ''}><span><b>Advertisement Script</b><small>Hook · Benefit · Proof · CTA</small></span></label><label><input type="radio" name="scriptType" value="youtube_shooting" ${result?.scriptType === 'youtube_shooting' ? 'checked' : ''}><span><b>YouTube Shooting Script</b><small>Cold Open · A-roll · B-roll · Camera</small></span></label></div><div class="script-mode-row"><label>Creation Mode<select name="creationMode"><option value="auto">AI Auto Generate</option><option value="manual">Manual Draft + AI Structure</option></select></label><label>Duration / Platform<input name="productionSettings" placeholder="例：YouTube 8分 / 16:9 / Studio shooting"></label></div><label>Production Brief<textarea name="message" required placeholder="商品・テーマ、視聴者、目的、Tone、必須内容、CTAなどを入力してください。"></textarea></label><label>Manual Draft（Manual mode）<textarea name="manualDraft" placeholder="既存の台本を貼り付けると、内容を保持したまま構成・尺・撮影指示を整理します。"></textarea></label></form>${script ? `<section class="production-script-editor"><header><div><small>${escapeHtml(result.scriptType === 'youtube_shooting' ? 'YOUTUBE SHOOTING SCRIPT' : 'ADVERTISEMENT SCRIPT')}</small><h2 contenteditable="true" data-script-field="title">${escapeHtml(script.title)}</h2></div><button id="saveScriptEdits">Save Edits</button></header><div class="script-editor-meta"><article><small>HOOK / COLD OPEN</small><p contenteditable="true" data-script-field="hook">${escapeHtml(script.hook)}</p></article><article><small>CONCEPT</small><p contenteditable="true" data-script-field="concept">${escapeHtml(script.concept)}</p></article></div><div class="full-script-edit"><small>FULL SCRIPT</small><p contenteditable="true" data-script-field="fullScript">${escapeHtml(script.fullScript)}</p></div><div class="shooting-table-wrap"><table class="shooting-script-table"><thead><tr><th>Shot / Time</th><th>Visual / Dialogue</th><th>Production</th></tr></thead><tbody>${scenes.map((scene,index)=>`<tr data-scene-index="${index}"><td><b>${scene.number}</b><span contenteditable="true" data-scene-field="seconds">${escapeHtml(scene.seconds)}</span><em>${escapeHtml(scene.shotType || '')}</em></td><td><strong contenteditable="true" data-scene-field="visual">${escapeHtml(scene.visual)}</strong><p contenteditable="true" data-scene-field="narration">${escapeHtml(scene.narration)}</p><small contenteditable="true" data-scene-field="onScreenText">${escapeHtml(scene.onScreenText)}</small></td><td><p><b>Camera</b> <span contenteditable="true" data-scene-field="camera">${escapeHtml(scene.camera || '')}</span></p><p><b>Audio</b> <span contenteditable="true" data-scene-field="audio">${escapeHtml(scene.audio || '')}</span></p><p><b>Location</b> ${escapeHtml(scene.location || '')}</p><p><b>Cast / Props</b> ${escapeHtml(scene.cast || '')} · ${escapeHtml(scene.props || '')}</p></td></tr>`).join('')}</tbody></table></div></section>` : '<div class="script-workspace-empty"><span>✎</span><h3>Script Briefを入力してください</h3><p>AI Auto GenerateまたはManual Draftから、制作可能な台本を作成します。</p></div>'}</div>`;
+}
+
+function prepareScriptSections() {
+  const form = $('scriptWorkspaceForm');
+  const persona = document.querySelector('.script-process-preview');
+  const hooks = document.querySelector('.script-hook-library');
+  const editor = document.querySelector('.production-script-editor');
+  if (form) { form.classList.add('script-stage-panel'); form.dataset.scriptSection = '0'; }
+  if (persona) { persona.classList.add('script-stage-panel'); persona.dataset.scriptSection = '1'; }
+  if (hooks) { hooks.classList.add('script-stage-panel'); hooks.dataset.scriptSection = '2'; }
+  if (editor) {
+    editor.classList.add('script-editor-stage-host');
+    let copy = editor.querySelector('.script-editor-copy');
+    if (!copy) {
+      copy = document.createElement('div');
+      copy.className = 'script-editor-copy script-stage-panel';
+      copy.dataset.scriptSection = '3';
+      [...editor.children].filter(child => !child.classList.contains('shooting-table-wrap') && !child.classList.contains('visual-storyboard')).forEach(child => copy.appendChild(child));
+      editor.insertBefore(copy, editor.firstChild);
+    }
+    const scenes = editor.querySelector('.shooting-table-wrap');
+    if (scenes) { scenes.classList.add('script-stage-panel'); scenes.dataset.scriptSection = '4'; }
+    const storyboard = editor.querySelector('.visual-storyboard');
+    if (storyboard) { storyboard.classList.add('script-stage-panel'); storyboard.dataset.scriptSection = '5'; }
+    const versions = document.createElement('section');
+    versions.className = 'script-versions-panel script-stage-panel';
+    versions.dataset.scriptSection = '6';
+    versions.innerHTML = `<header><small>07 · VERSIONS</small><h2>Script Versions</h2><p>生成・編集したVersionを比較し、承認版を管理します。</p></header><article><div><b>Version 01</b><span>Current · Review</span></div><strong>${escapeHtml(outputs[selectedProject]?.at(-1)?.script?.title || 'Untitled Script')}</strong><small>${escapeHtml(outputs[selectedProject]?.at(-1)?.createdAt?.slice(0,10) || 'Demo')}</small></article>`;
+    editor.insertAdjacentElement('afterend', versions);
+  }
+  showScriptSection(editor ? 1 : 0);
+}
+
+function showScriptSection(index) {
+  activeScriptExportSection = index;
+  document.querySelectorAll('.delivery-nav nav button').forEach((button,buttonIndex) => button.classList.toggle('active', buttonIndex === index));
+  document.querySelectorAll('#workspaceSteps button').forEach((button,buttonIndex) => {
+    button.classList.toggle('active', buttonIndex === index);
+    button.classList.toggle('done', buttonIndex < index);
+    const status = button.querySelector('span');
+    if (status) status.textContent = buttonIndex < index ? '✓' : buttonIndex === index ? 'Active' : 'Pending';
+    button.onclick = () => showScriptSection(buttonIndex);
+  });
+  document.querySelectorAll('[data-script-section]').forEach(panel => panel.classList.toggle('hidden-stage', Number(panel.dataset.scriptSection) !== index));
+  const process = document.querySelector('.script-demo-process');
+  if (process) process.classList.toggle('hidden-stage', index !== 1 && index !== 2);
+  const editor = document.querySelector('.script-editor-stage-host');
+  if (editor) editor.classList.toggle('hidden-stage', index < 3 || index > 5);
+  const main = document.querySelector('.delivery-main');
+  if (main) main.scrollTop = 0;
 }
 
 function saveScriptWorkspaceEdits() {
