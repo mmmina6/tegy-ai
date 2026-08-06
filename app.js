@@ -20,6 +20,18 @@ const baseNodes = [
   { id: 'shadow', name: 'ShadowBan Agent', icon: '⬡', cls: 'orange-bg', x: 51, y: 67, status: 'Ready', type: 'progress', detail: 'YouTubeチャンネル分析準備完了', progress: 0 }
 ];
 
+function createInitialProjectWorks() {
+  const research = structuredClone(baseNodes.find(node => node.id === 'research'));
+  Object.assign(research, {
+    x: 42,
+    y: 34,
+    status: 'Ready',
+    detail: 'Project Briefを入力してリサーチを開始',
+    progress: 0
+  });
+  return [research];
+}
+
 let selectedProject = null;
 let nodes = [];
 let selectedNode = null;
@@ -159,7 +171,10 @@ function openProject(id) {
   renderNodes();
   renderHistory();
   if (latest) renderOutput(latest);
-  requestAnimationFrame(() => selectNode('script'));
+  const initialNode = nodes.find(node => node.id === 'script')
+    || nodes.find(node => node.id === 'research')
+    || nodes.find(node => node.id !== 'pm');
+  if (initialNode) requestAnimationFrame(() => selectNode(initialNode.id));
 }
 
 function showWelcome() {
@@ -740,6 +755,9 @@ function createProject() {
   if (!name) return;
   const id = `p${Date.now()}`;
   projects.push({ id, name, sub: 'New Project', mark: name.trim().charAt(0) || '＋' });
+  projectDetails[id] = { owner:'Mina Rho', deadline:'未設定', requirement:'Project Briefで最終要件を設定' };
+  projectWorks[id] = createInitialProjectWorks();
+  localStorage.setItem('tegy-project-works', JSON.stringify(projectWorks));
   renderProjects(); openProject(id);
 }
 
