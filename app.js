@@ -141,7 +141,52 @@ try {
   const savedResearchItems = JSON.parse(localStorage.getItem('tegy-research-book') || 'null');
   if (Array.isArray(savedResearchItems) && savedResearchItems.length) researchItems.splice(0, researchItems.length, ...savedResearchItems);
 } catch {}
+const kaoResearchItems = structuredClone(researchItems);
+kaoResearchItems[0].rows = [
+  ['Product','THE CORE · 3タイプのハーフ形状インソール','Official product page','Confirmed'],
+  ['Connected service','my Symmetryで身体のゆがみを測定し、タイプを提案','Official product page','Confirmed'],
+  ['Offer','税込10,500円・30日間の返金／交換保証','Official product page','Confirmed']
+];
+kaoResearchItems[1].rows = [
+  ['Daily posture concern','デスクワークやスマホ習慣から、姿勢を日常課題として捉える層','Campaign hypothesis','Verify'],
+  ['Low-effort care','特別な時間ではなく、歩行に組み込めるケアへの関心','Campaign hypothesis','Verify'],
+  ['Personalized choice','一般論より、自分の状態に合わせた提案が安心材料になる','Campaign hypothesis','Verify']
+];
+kaoResearchItems[2].rows = [
+  ['Benchmark category','姿勢サポート／機能性インソール','TikTok · Reels · Shorts','Creative review'],
+  ['Benchmark format','Before awareness → 測定 → 商品装着 → 歩行','Vertical short video','Creative review'],
+  ['Differentiation','my Symmetryによる見える化と3タイプ提案','Official product page','Confirmed']
+];
+kaoResearchItems[3].rows = [
+  ['Paid creative angle','「姿勢を意識し続けられる？」から始めるProblem–Solution','TikTok / Meta','Test plan'],
+  ['Reason to believe','花王の歩行姿勢研究・アプリ連動・3タイプ','Official product page','Confirm wording'],
+  ['Landing flow','Video → Official page → my Symmetry理解 → Purchase','Campaign plan','Open']
+];
+kaoResearchItems[4].rows = [
+  ['How-to reference','スマホを当てて8歩で測定する利用イメージ','Official product page','Confirmed'],
+  ['Product demo','靴への入れ方・歩行シーン・水洗い方法','Official product page','Confirmed'],
+  ['Organic series','姿勢 Awareness / 測定 / 3タイプ / 使用方法','Short-form series','Proposed']
+];
+kaoResearchItems[5].rows = [
+  ['TikTok','医療効果を断定せず、着用時のサポート表現と注記を確認','Platform / Legal review','Required'],
+  ['Instagram Reels','9:16 safe area・字幕・ブランド表記を統一','Production checklist','Required'],
+  ['YouTube Shorts','縦型30秒・End card・公式ページ導線を確認','Production checklist','Required']
+];
+kaoResearchItems[6].rows = [
+  ['座り仕事の姿勢リセット層','意識しても姿勢ケアが続かない','毎日の歩行に自然に組み込めるなら試しやすい','Campaign hypothesis'],
+  ['歩行コンディション重視層','自分に合うインソール選びに迷う','状態に合わせた提案が安心につながる','Campaign hypothesis'],
+  ['Primary Market Insight','頑張る姿勢ケアから、足元に組み込む日常ケアへ','Research synthesis','Validate in campaign']
+];
+kaoResearchItems[7].rows = [
+  ['01','「意識する」から「足元に入れる」への転換','30秒でProblem–Solutionを視覚化しやすい','AI Script'],
+  ['02','my Symmetryの測定を信頼の入口にする','自分向けの提案という納得感をつくる','Video'],
+  ['03','3媒体共通Master＋End card差し替え','制作効率と媒体最適化を両立','Operations']
+];
 let activeResearchIndex = 0;
+
+function getActiveResearchItems() {
+  return selectedProject === 'kao-the-core' ? kaoResearchItems : researchItems;
+}
 
 function saveResearchBook() {
   localStorage.setItem('tegy-research-book', JSON.stringify(researchItems));
@@ -364,14 +409,14 @@ function openFullWorkspace(id) {
   const workspaceKey = getWorkspaceKey(node);
   $('runWorkspaceAgent').textContent = workspaceKey === 'research' ? '↻ Run Research' : workspaceKey === 'script' ? '↻ Generate Script' : '↻ Run Agent';
   const stepMap = {
-    research: ['01. Project Brief','02. Company & Product','03. Market Research','04. Competitors','05. Ads & Organic','06. Market Insight','07. Report'],
+    research: getActiveResearchItems().map((item,index) => `${String(index + 1).padStart(2,'0')}. ${item.title}`),
     script: ['01. Campaign Brief','02. Persona / Viewer','03. Hook Library','04. Script Editor','05. Scenes / 字コンテ','06. Visual Storyboard / 絵コンテ','07. Versions'],
     animation: ['01. Anime Brief','02. Anime Script','03. 字コンテ','04. Style & Characters','05. 絵コンテ','06. Image-to-Video','07. Delivery'],
-    shadow: ['01. Channel Input','02. Health Check','03. Content Audit','04. SEO Actions','05. Monitoring Report'],
-    video: ['01. Video Brief','02. References','03. Shot Plan','04. Edit & Review','05. Delivery'],
-    operations: ['01. Channel Setup','02. Content Calendar','03. Publish','04. Performance','05. Report'],
-    brand: ['01. Brand Input','02. Identity Audit','03. Positioning','04. Guidelines','05. Brand Book'],
-    manager: ['01. Project Setup','02. Work Planning','03. Dependencies','04. Review','05. Delivery']
+    shadow: ['01. Channel Overview','02. Health Signals','03. Content Audit','04. Keywords','05. Action Plan','06. Monitoring'],
+    video: ['01. Video Brief','02. References','03. Shot List','04. Footage','05. Edit Review','06. Deliverables'],
+    operations: ['01. Channel Setup','02. Calendar','03. Approval Queue','04. Publishing','05. Performance','06. Reports'],
+    brand: ['01. Brand Input','02. Identity','03. Positioning','04. Voice','05. Visual Rules','06. Brand Book'],
+    manager: ['01. Project Brief','02. Work Plan','03. Dependencies','04. Approvals','05. Timeline','06. Delivery']
   };
   const steps = stepMap[workspaceKey] || stepMap.manager;
   $('workspaceSteps').classList.remove('hidden');
@@ -405,6 +450,7 @@ function renderDeliveryWorkspace(key, node) {
   };
   const d = definitions[key] || definitions.manager;
   $('genericWorkspace').innerHTML = `<div class="delivery-workspace ${key}-delivery"><aside class="delivery-nav"><div class="delivery-nav-title"><span class="node-icon ${node.cls}">${node.icon}</span><div><b>${escapeHtml(node.name)}</b><small>Project Work</small></div></div><nav>${d.nav.map((item,index)=>`<button class="${index===1?'active':''}"><span>${String(index+1).padStart(2,'0')}</span>${escapeHtml(item)}</button>`).join('')}</nav><button class="delivery-add">＋ Add item</button></aside><main class="delivery-main"><header><div><small>${d.kicker}</small><h1>${d.title}</h1><p>${d.copy}</p></div><button>•••</button></header>${deliveryCenterMarkup(d.center)}</main><aside class="delivery-rail"><section><small>AI INSIGHT</small><h3>Recommended direction</h3><p>${d.insight}</p></section><section><small>HISTORY</small><ul><li><b>10:25</b> Workspace updated</li><li><b>10:10</b> Project context synced</li><li><b>Yesterday</b> Client requirement added</li></ul></section><section><small>EXPORT & DELIVERY</small>${d.exports.map((item,index)=>`<button data-export-index="${index}">${escapeHtml(item)} <span>→</span></button>`).join('')}</section></aside></div>`;
+  if (key !== 'script') prepareAgentSections(key, d.nav);
   if (key === 'shadow') {
     const form = $('shadowAuditForm');
     if (form) form.onsubmit = event => { event.preventDefault(); runShadowAudit(); };
@@ -429,6 +475,45 @@ function renderDeliveryWorkspace(key, node) {
     document.querySelectorAll('[data-anime-shot]').forEach(button => { button.onclick = () => generateAnimeStoryboardFrame(button.dataset.animeShot); });
     document.querySelectorAll('[data-export-index]').forEach(button => { button.onclick = () => exportAnimePackage(Number(button.dataset.exportIndex)); });
   }
+}
+
+function prepareAgentSections(key, navItems) {
+  const root = document.querySelector('.delivery-main > div:last-child');
+  if (!root) return;
+  const selectorMap = {
+    animation: [['.anime-brief-form',0],['.anime-treatment',1],['.anime-empty',1],['.anime-ji-conte',2],['.anime-assets',3],['.anime-e-conte',4],['.anime-video-queue',5]],
+    shadow: [['#shadowAuditForm',0],['.audit-result',1],['.audit-empty',1]],
+    video: [['.video-preview',0],['.video-meta',1],['.timeline',2]],
+    operations: [['.calendar-head',0],['.content-calendar',1],['.performance-row',4]],
+    manager: [['.manager-summary',0],['.dependency-map',1]],
+    brand: [['.brand-summary',0],['.brand-columns',1]]
+  };
+  const assigned = new Set();
+  (selectorMap[key] || []).forEach(([selector,index]) => {
+    root.querySelectorAll(selector).forEach(panel => { panel.classList.add('agent-stage-panel'); panel.dataset.agentSection = String(index); assigned.add(index); });
+  });
+  navItems.forEach((label,index) => {
+    if (assigned.has(index)) return;
+    const placeholder = document.createElement('section');
+    placeholder.className = 'agent-stage-placeholder agent-stage-panel';
+    placeholder.dataset.agentSection = String(index);
+    placeholder.innerHTML = `<small>${String(index + 1).padStart(2,'0')} · ${escapeHtml(label).toUpperCase()}</small><h2>${escapeHtml(label)}</h2><p>この工程の情報、承認状態、成果物をここで管理します。Project Contextと前工程のOutputを自動的に参照します。</p><div><span>Project Context synced</span><span>Waiting for input / approval</span></div>`;
+    root.appendChild(placeholder);
+  });
+  showAgentSection(0);
+}
+
+function showAgentSection(index) {
+  document.querySelectorAll('[data-agent-section]').forEach(panel => panel.classList.toggle('hidden-stage', Number(panel.dataset.agentSection) !== index));
+  document.querySelectorAll('#workspaceSteps button').forEach((button,buttonIndex) => {
+    button.classList.toggle('active', buttonIndex === index);
+    button.classList.toggle('done', buttonIndex < index);
+    const status = button.querySelector('span');
+    if (status) status.textContent = buttonIndex < index ? '✓' : buttonIndex === index ? 'Active' : 'Pending';
+    button.onclick = () => showAgentSection(buttonIndex);
+  });
+  const main = document.querySelector('.delivery-main');
+  if (main) main.scrollTop = 0;
 }
 
 function deliveryCenterMarkup(type) {
@@ -740,7 +825,7 @@ async function runActiveWorkspaceAgent() {
   $('workspaceSaveStatus').textContent = '● Research Agent 実行中...';
   node.status = 'In Progress'; node.progress = 55; saveProjectWorks();
   try {
-    const response = await fetch('/api/research', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ projectContext:buildProjectContext(), researchBook:researchItems }) });
+    const response = await fetch('/api/research', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ projectContext:buildProjectContext(), researchBook:getActiveResearchItems() }) });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.detail || payload.error || 'Research failed.');
     researchOutputs[selectedProject] ||= [];
@@ -789,25 +874,35 @@ async function runShadowAudit() {
 }
 
 function applyResearchOutput(result) {
+  const targetItems = getActiveResearchItems();
   const sectionMap = [
     ['companyAndProduct', 0], ['marketAndTrends', 1], ['competitorAccounts', 2],
     ['paidAdvertising', 3], ['organicAndVideo', 4], ['platformAndPolicy', 5]
   ];
   sectionMap.forEach(([key,index]) => {
     const findings = result.landscape?.[key] || [];
-    if (findings.length) researchItems[index].rows = findings.map(item => [item.topic, item.finding, item.sourceUrl || item.evidence, item.needsVerification ? 'Verify' : 'Ready']);
+    if (findings.length) targetItems[index].rows = findings.map(item => [item.topic, item.finding, item.sourceUrl || item.evidence, item.needsVerification ? 'Verify' : 'Ready']);
   });
   const market = result.marketInsight;
-  if (market?.marketPersonas?.length) researchItems[6].rows = market.marketPersonas.map(persona => [persona.name, persona.needs.join(' / '), persona.context, persona.evidenceBasis.join(' / ')]).concat([['Primary Market Insight','',market.primaryMarketInsight,'Research Agent']]);
-  if (result.strategy?.strategicDirections?.length) researchItems[7].rows = result.strategy.strategicDirections.map(item => [String(item.priority), item.direction, item.rationale, item.recommendedWork]);
-  saveResearchBook();
+  if (market?.marketPersonas?.length) targetItems[6].rows = market.marketPersonas.map(persona => [persona.name, persona.needs.join(' / '), persona.context, persona.evidenceBasis.join(' / ')]).concat([['Primary Market Insight','',market.primaryMarketInsight,'Research Agent']]);
+  if (result.strategy?.strategicDirections?.length) targetItems[7].rows = result.strategy.strategicDirections.map(item => [String(item.priority), item.direction, item.rationale, item.recommendedWork]);
+  if (selectedProject !== 'kao-the-core') saveResearchBook();
   renderResearchBook();
 }
 
 function renderResearchBook() {
-  $('researchSections').innerHTML = researchItems.map((item,index) => `<button class="${index === activeResearchIndex ? 'active' : ''}" data-research-section="${index}"><span>${String(index + 1).padStart(2,'0')}</span>${escapeHtml(item.title)}</button>`).join('');
+  const items = getActiveResearchItems();
+  if (activeResearchIndex >= items.length) activeResearchIndex = 0;
+  $('researchSections').innerHTML = items.map((item,index) => `<button class="${index === activeResearchIndex ? 'active' : ''}" data-research-section="${index}"><span>${String(index + 1).padStart(2,'0')}</span>${escapeHtml(item.title)}</button>`).join('');
   document.querySelectorAll('[data-research-section]').forEach(button => { button.onclick = () => { activeResearchIndex = Number(button.dataset.researchSection); renderResearchBook(); }; });
-  const item = researchItems[activeResearchIndex];
+  document.querySelectorAll('#workspaceSteps button').forEach((button,index) => {
+    button.classList.toggle('active', index === activeResearchIndex);
+    button.classList.toggle('done', index < activeResearchIndex);
+    const status = button.querySelector('span');
+    if (status) status.textContent = index < activeResearchIndex ? '✓' : index === activeResearchIndex ? 'Active' : 'Pending';
+    button.onclick = () => { activeResearchIndex = index; renderResearchBook(); };
+  });
+  const item = items[activeResearchIndex];
   $('researchPageKicker').textContent = item.kicker;
   $('researchPageTitle').textContent = item.title;
   $('researchPageDescription').textContent = item.description;
@@ -815,22 +910,24 @@ function renderResearchBook() {
   $('researchInsightCopy').textContent = item.insight;
   $('researchTableHead').innerHTML = `<tr>${item.columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}<th></th></tr>`;
   $('researchTableBody').innerHTML = item.rows.map((row,rowIndex) => `<tr>${row.map((cell,columnIndex) => `<td contenteditable="true" data-row="${rowIndex}" data-column="${columnIndex}">${escapeHtml(cell)}</td>`).join('')}<td><button data-delete-row="${rowIndex}" aria-label="Delete row">×</button></td></tr>`).join('');
-  document.querySelectorAll('#researchTableBody [contenteditable]').forEach(cell => { cell.onblur = () => { item.rows[Number(cell.dataset.row)][Number(cell.dataset.column)] = cell.textContent.trim(); saveResearchBook(); }; });
+  document.querySelectorAll('#researchTableBody [contenteditable]').forEach(cell => { cell.onblur = () => { item.rows[Number(cell.dataset.row)][Number(cell.dataset.column)] = cell.textContent.trim(); if (selectedProject !== 'kao-the-core') saveResearchBook(); }; });
   document.querySelectorAll('[data-delete-row]').forEach(button => { button.onclick = () => { item.rows.splice(Number(button.dataset.deleteRow),1); saveResearchBook(); renderResearchBook(); }; });
 }
 
 function addResearchRow() {
-  researchItems[activeResearchIndex].rows.push(researchItems[activeResearchIndex].columns.map(() => ''));
-  saveResearchBook();
+  const items = getActiveResearchItems();
+  items[activeResearchIndex].rows.push(items[activeResearchIndex].columns.map(() => ''));
+  if (selectedProject !== 'kao-the-core') saveResearchBook();
   renderResearchBook();
 }
 
 function addResearchSection() {
   const title = prompt('追加する調査項目名を入力してください');
   if (!title) return;
-  researchItems.push({ title, kicker: `${String(researchItems.length + 1).padStart(2,'0')} · CUSTOM`, description: 'この Project のために追加した自由調査項目です。', insight: '必要な項目と参考情報を自由に追加できます。', columns: ['Research item','Finding','Source / URL','Notes'], rows: [['','','','']] });
-  saveResearchBook();
-  activeResearchIndex = researchItems.length - 1;
+  const items = getActiveResearchItems();
+  items.push({ title, kicker: `${String(items.length + 1).padStart(2,'0')} · CUSTOM`, description: 'この Project のために追加した自由調査項目です。', insight: '必要な項目と参考情報を自由に追加できます。', columns: ['Research item','Finding','Source / URL','Notes'], rows: [['','','','']] });
+  if (selectedProject !== 'kao-the-core') saveResearchBook();
+  activeResearchIndex = items.length - 1;
   renderResearchBook();
 }
 
