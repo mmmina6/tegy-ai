@@ -21,15 +21,23 @@ const baseNodes = [
 ];
 
 function createInitialProjectWorks() {
+  const projectManager = structuredClone(baseNodes.find(node => node.id === 'pm'));
   const research = structuredClone(baseNodes.find(node => node.id === 'research'));
+  Object.assign(projectManager, {
+    x: 42,
+    y: 8,
+    status: 'Ready',
+    detail: 'Project BriefとResearchの開始を待っています',
+    progress: 0
+  });
   Object.assign(research, {
     x: 42,
-    y: 34,
+    y: 43,
     status: 'Ready',
     detail: 'Project Briefを入力してリサーチを開始',
     progress: 0
   });
-  return [research];
+  return [projectManager, research];
 }
 
 let selectedProject = null;
