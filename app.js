@@ -32,12 +32,57 @@ const baseNodes = [
 
 const sampleProjectWorks = {
   'kao-the-core': [
-    { id:'pm', name:'AI Project Manager', icon:'✦', cls:'pm', x:38, y:5, status:'Planning', type:'progress', detail:'3媒体向け30秒縦型動画の制作計画を整理', progress:42 },
-    { id:'research', name:'Research Agent', icon:'◎', cls:'mint-bg', x:10, y:38, status:'In Progress', type:'progress', detail:'商品根拠・市場・競合クリエイティブを確認', progress:68 },
-    { id:'script', name:'Script Agent', icon:'✎', cls:'cyan-bg', x:40, y:38, status:'Ready', type:'progress', detail:'30秒・9:16の共通マスタースクリプトを作成', progress:20 },
+    { id:'pm', name:'AI Project Manager', icon:'✦', cls:'pm', x:38, y:5, status:'In Progress', type:'progress', detail:'Script承認後、StoryboardとVideo制作へ進行', progress:58 },
+    { id:'research', name:'Research Agent', icon:'◎', cls:'mint-bg', x:10, y:38, status:'Completed', type:'done', detail:'商品根拠とCampaign Insightを共有済み', progress:100 },
+    { id:'script', name:'Script Agent', icon:'✎', cls:'cyan-bg', x:40, y:38, status:'Review', type:'progress', detail:'30秒 Vertical Master Script v1 · 承認待ち', progress:90 },
     { id:'video', name:'Video Agent', icon:'▧', cls:'pink-bg', x:70, y:38, status:'Waiting', type:'waiting', detail:'Approved Scriptと絵コンテ完了後に制作開始', progress:0 },
     { id:'operations', name:'Operations Agent', icon:'⌘', cls:'mint-bg', x:55, y:69, status:'Planned', type:'waiting', detail:'TikTok・Reels・Shortsの投稿仕様と検証を管理', progress:0 }
   ]
+};
+
+const sampleScriptOutputs = {
+  'kao-the-core': [{
+    agent:'script', projectId:'kao-the-core', scriptType:'advertisement', creationMode:'auto', createdAt:'2026-08-06T10:30:00.000Z',
+    product:{
+      productName:'花王 THE CORE',
+      description:'my Symmetryで見える化した身体のゆがみに合わせて選ぶ、3タイプのハーフ形状インソール。靴に入れて歩く日常動作から姿勢ケアを考える。',
+      benefits:['3タイプから提案','ハーフ形状','水洗い可能','30日間の返金・交換保証'],
+      audience:'姿勢や身体のバランスが気になる働く男女',
+      platform:'TikTok · Instagram Reels · YouTube Shorts',
+      durationSeconds:30,
+      objective:'商品理解と公式ページへの誘導',
+      tone:'Clean · Credible · Everyday discovery',
+      cta:'まずはmy Symmetryで、自分のゆがみを知る。',
+      assumptions:['9:16縦型共通マスター','広告表現は公式ページで確認できる範囲に限定']
+    },
+    insight:{
+      personas:[
+        {name:'座り仕事の姿勢リセット層',age:'30–45',profile:'デスクワークが長く、鏡や写真で姿勢の傾きが気になり始めた人。',lifestyle:'通勤と仕事が中心。特別な運動時間は取りにくい。',socialBehavior:'通勤中にReelsやTikTokで短いセルフケア情報を見る。',pain:['姿勢を意識しても続かない','自分に合うケアが分からない'],insight:'頑張るケアではなく、毎日の歩行に自然に組み込めるなら試しやすい。',motivation:'日常を変えずに姿勢ケアの第一歩を始めたい。',objections:['本当に自分に合うか','靴の中で使いやすいか'],triggers:['アプリで状態を見える化','3タイプから提案','30日間保証']},
+        {name:'歩行コンディション重視層',age:'45–60',profile:'買い物や旅行などを快適に楽しむため、足元と身体の安定を意識している人。',lifestyle:'日常的によく歩き、道具は納得して選びたい。',socialBehavior:'YouTube ShortsやInstagramで商品レビューと使い方を確認する。',pain:['長く歩く日の身体のブレが気になる','一般的なインソール選びに迷う'],insight:'万人向けより、自分の状態に合わせて選べる根拠が安心につながる。',motivation:'歩く時間を前向きな身体ケアに変えたい。',objections:['価格に見合うか','手入れが面倒ではないか'],triggers:['花王の歩行姿勢研究','水洗い可能','日常の靴に入れるハーフ形状']}
+      ],
+      selectedPersonaIndex:0,
+      selectionReason:'縦型動画の短い導入で「姿勢を意識しても続かない」という日常課題を提示しやすいため。',
+      creativeDirection:'姿勢を正そうと頑張る人物から始め、「意識する」から「足元に入れる」への転換を視覚的に見せる。',
+      recommendedHooks:['姿勢、ずっと意識できますか？','いつもの一歩を、姿勢ケアの一歩に。','そのゆがみ、まず足元から見てみる。']
+    },
+    script:{
+      title:'いつもの一歩を、意味ある一歩に。',
+      hook:'姿勢、ずっと意識できますか？',
+      concept:'努力して姿勢を保つのではなく、足元から日常の歩行を見直す30秒。',
+      fullScript:'姿勢、ずっと意識できますか？ デスクワーク、スマホ、毎日のクセ。まずはmy Symmetryで、自分の身体のゆがみを見える化。結果に合わせて3タイプから提案される、花王のインソール THE CORE。いつもの靴に入れて歩く。それだけで、いつもの一歩を意味ある一歩に。まずは、自分のゆがみを知ることから。',
+      cta:'my Symmetryで測定して、あなたに合うTHE COREを。',
+      scenes:[
+        {number:1,seconds:'0–3s',visual:'デスク前で姿勢を正すが、すぐ元に戻る人物。画面中央に問いかけ。',narration:'姿勢、ずっと意識できますか？',onScreenText:'姿勢、ずっと意識できますか？',shotType:'Medium → Punch in',location:'Office / Home desk',cast:'30–40代 1名',camera:'9:16・正面・素早い寄り',audio:'小さな通知音 → 無音の間',props:'PC・スマートフォン'},
+        {number:2,seconds:'3–7s',visual:'デスクワーク、スマホ、歩行の足元をテンポよく3カットで見せる。',narration:'デスクワーク、スマホ、毎日のクセ。',onScreenText:'気づかないうちに、身体のゆがみ',shotType:'Fast montage',location:'Office / Street',cast:'同人物',camera:'3カット・各1秒前後',audio:'テンポのあるBeat開始',props:'PC・スマートフォン・スニーカー'},
+        {number:3,seconds:'7–12s',visual:'スマホをおなかに当てて歩き、my Symmetryの測定イメージへ。',narration:'まずはmy Symmetryで、自分の身体のゆがみを見える化。',onScreenText:'スマホを当てて8歩※',shotType:'Over shoulder + UI',location:'Home',cast:'同人物',camera:'手元からUIへMatch cut',audio:'軽いスキャン音',props:'スマートフォン'},
+        {number:4,seconds:'12–18s',visual:'TYPE 1・2・3を縦に切り替え、選択結果から商品へつながる。',narration:'結果に合わせて3タイプから提案される、花王のインソール THE CORE。',onScreenText:'ゆがみに合わせた3タイプ',shotType:'Product macro',location:'Studio',cast:'なし',camera:'Top shot・Macro',audio:'明るい決定音',props:'THE CORE 3タイプ'},
+        {number:5,seconds:'18–25s',visual:'靴にハーフ形状のインソールを入れ、自然に歩き出す。',narration:'いつもの靴に入れて歩く。それだけで、いつもの一歩を意味ある一歩に。',onScreenText:'靴に入れて、歩く。',shotType:'Close-up → Tracking',location:'Entrance / Street',cast:'同人物',camera:'足元Close-upから並走',audio:'足音とBeatが重なる',props:'ひも付きシューズ・THE CORE'},
+        {number:6,seconds:'25–30s',visual:'自然に歩く後ろ姿から商品・アプリ・公式CTAのEnd card。',narration:'まずは、自分のゆがみを知ることから。',onScreenText:'my Symmetry × THE CORE\n詳しくは公式サイトへ',shotType:'Wide → End card',location:'Street / Graphic',cast:'同人物',camera:'ゆるいPull back',audio:'ブランド余韻',props:'商品・アプリ画面'}
+      ],
+      structure:[{section:'Hook',purpose:'日常課題を自分ごと化',estimatedSeconds:3},{section:'Problem',purpose:'ゆがみにつながる生活背景',estimatedSeconds:4},{section:'Solution',purpose:'測定と商品選択を提示',estimatedSeconds:11},{section:'Benefit',purpose:'日常行動への導入を見せる',estimatedSeconds:7},{section:'CTA',purpose:'公式ページ・アプリへ誘導',estimatedSeconds:5}],
+      productionNotes:['9:16 safe area内に字幕を配置','数値・効果表現には公式注記を併記','TikTok / Reels / ShortsでEnd cardのみ媒体別に調整']
+    }
+  }]
 };
 
 function createInitialProjectWorks() {
@@ -107,8 +152,8 @@ function escapeHtml(value = '') {
 }
 
 function loadOutputs() {
-  try { return JSON.parse(localStorage.getItem('tegy-script-outputs') || '{}'); }
-  catch { return {}; }
+  try { return { ...structuredClone(sampleScriptOutputs), ...JSON.parse(localStorage.getItem('tegy-script-outputs') || '{}') }; }
+  catch { return structuredClone(sampleScriptOutputs); }
 }
 
 function saveOutputs() {
@@ -386,7 +431,10 @@ function renderDeliveryWorkspace(key, node) {
 
 function deliveryCenterMarkup(type) {
   if (type === 'animation') return animeWorkspaceMarkup(animeOutputs[selectedProject]?.at(-1));
-  if (type === 'script') return scriptWorkspaceMarkup(outputs[selectedProject]?.at(-1));
+  if (type === 'script') {
+    const result = outputs[selectedProject]?.at(-1);
+    return `${scriptProcessPreview(result)}${scriptWorkspaceMarkup(result)}`;
+  }
   if (type === 'shadow') return shadowWorkspaceMarkup(shadowOutputs[selectedProject]?.at(-1));
   if (type === 'video') return `<div class="video-board"><div class="video-preview"><button>▷</button><span>00:00 / 00:30</span></div><div class="video-meta"><section><small>REFERENCE ANALYSIS</small><h3>Hook → Proof → CTA</h3><p>最初の3秒、画面変化、字幕密度、CTA の構造を参考動画から抽出。</p></section><section><small>REVIEW STATUS</small><h3>Rough Cut v03</h3><p>2 comments waiting · Mina Rho</p></section></div><div class="timeline"><b>V1</b><i></i><i></i><i></i><b>A1</b><i></i><i></i></div></div>`;
   if (type === 'operations') return `<div class="operations-board"><div class="calendar-head"><button>←</button><h2>August 2026</h2><button>→</button><span>＋ New Post</span></div><div class="content-calendar">${['MON 3','TUE 4','WED 5','THU 6','FRI 7'].map((day,index)=>`<article><b>${day}</b>${index===1?'<div class="post youtube">YouTube<br><span>How-to video · 18:00</span></div>':''}${index===3?'<div class="post instagram">Instagram<br><span>Reels · Approved</span></div>':''}</article>`).join('')}</div><div class="performance-row"><article><small>VIEWS</small><b>128.4K</b><span>↑ 18%</span></article><article><small>ENGAGEMENT</small><b>6.8%</b><span>↑ 1.2%</span></article><article><small>LEADS</small><b>342</b><span>↑ 24%</span></article></div></div>`;
@@ -454,6 +502,13 @@ function exportAnimePackage(fullPackage) {
   const rows=[['Scene','Shot','Seconds','Visual','Character Action','Camera','Dialogue / Narration','Audio','Transition','Image Prompt']];
   (result.textStoryboard.scenes||[]).forEach(scene=>(scene.shots||[]).forEach(shot=>rows.push([scene.sceneNumber,shot.shotNumber,shot.seconds,shot.visual,shot.characterAction,shot.camera,shot.dialogueNarration,shot.audio,shot.transition,shot.imagePrompt])));
   downloadFile('anime-ji-conte.csv',rows.map(row=>row.map(csvCell).join(',')).join('\n'),'text/csv;charset=utf-8');
+}
+
+function scriptProcessPreview(result) {
+  if (!result?.insight) return '';
+  const personas = result.insight.personas || [];
+  const hooks = [result.script?.hook, ...(result.insight.recommendedHooks || [])].filter(Boolean);
+  return `<div class="script-demo-process"><section class="script-process-preview"><header><div><small>02 · CAMPAIGN PERSONA</small><h2>Persona & Creative Insight</h2></div><span>Research Context synced</span></header><div class="script-persona-grid">${personas.map((persona,index)=>`<article class="${index===result.insight.selectedPersonaIndex?'recommended':''}"><small>PERSONA ${index+1}${index===result.insight.selectedPersonaIndex?' · RECOMMENDED':''}</small><h3>${escapeHtml(persona.name)} · ${escapeHtml(persona.age)}</h3><p>${escapeHtml(persona.profile)}</p><dl><dt>PAIN</dt><dd>${persona.pain.map(escapeHtml).join(' / ')}</dd><dt>INSIGHT</dt><dd>${escapeHtml(persona.insight)}</dd><dt>TRIGGER</dt><dd>${persona.triggers.map(escapeHtml).join(' / ')}</dd></dl></article>`).join('')}</div><div class="script-direction-card"><small>CREATIVE DIRECTION</small><p>${escapeHtml(result.insight.creativeDirection)}</p></div></section><section class="script-hook-library"><header><small>03 · HOOK LIBRARY</small><h2>Approved Hook Options</h2></header>${hooks.map((hook,index)=>`<article><span>${String(index+1).padStart(2,'0')}</span><b>${escapeHtml(hook)}</b>${index===0?'<em>SELECTED</em>':''}</article>`).join('')}</section></div>`;
 }
 
 function scriptWorkspaceMarkup(result) {
