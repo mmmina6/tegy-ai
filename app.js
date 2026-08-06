@@ -2,6 +2,7 @@ const projects = [
   { id: 'azabu', name: '日本インプラント', sub: 'Japan Implant', mark: '日' },
   { id: 'imai', name: '明治安田生命', sub: 'Meijiyasuda Seimei', mark: '明' },
   { id: 'tegy', name: 'TEGY', sub: 'Internal Project', mark: 'T' },
+  { id: 'kao-the-core', name: '花王 THE CORE', sub: 'Kao Life Care Lab', mark: '花' },
   { id: 'demo', name: 'Demo Project', sub: 'Test & Explore', mark: 'D' }
 ];
 
@@ -9,6 +10,15 @@ const projectDetails = {
   azabu: { owner:'Mina Rho', deadline:'2026/08/28', requirement:'信頼性を保ちながら相談予約につながる広告制作' },
   imai: { owner:'Mina Rho', deadline:'2026/09/12', requirement:'若年層にも身近に感じるブランドコミュニケーション' },
   tegy: { owner:'Mina Rho', deadline:'2026/09/30', requirement:'AI 広告会社の持続可能な業務基盤を構築' },
+  'kao-the-core': {
+    owner:'Mina Rho',
+    deadline:'2026/08/21',
+    requirement:'THE COREの価値を30秒・9:16で伝える縦型動画を制作',
+    campaign:'THE CORE Vertical Video Test',
+    platforms:'TikTok · Instagram Reels · YouTube Shorts',
+    source:'https://www.kao-kirei.com/ja/officialh/kaolifecarelab/thecore/',
+    defaultNode:'pm'
+  },
   demo: { owner:'Mina Rho', deadline:'2026/08/15', requirement:'商品の価値を生活シーンで伝える短尺広告' }
 };
 
@@ -19,6 +29,16 @@ const baseNodes = [
   { id: 'animation', name: 'AI Anime Agent', icon: '▷', cls: 'pink-bg', x: 69, y: 35, status: 'Waiting', type: 'waiting', detail: 'Approved Script完了後に開始', progress: 0 },
   { id: 'shadow', name: 'ShadowBan Agent', icon: '⬡', cls: 'orange-bg', x: 51, y: 67, status: 'Ready', type: 'progress', detail: 'YouTubeチャンネル分析準備完了', progress: 0 }
 ];
+
+const sampleProjectWorks = {
+  'kao-the-core': [
+    { id:'pm', name:'AI Project Manager', icon:'✦', cls:'pm', x:38, y:5, status:'Planning', type:'progress', detail:'3媒体向け30秒縦型動画の制作計画を整理', progress:42 },
+    { id:'research', name:'Research Agent', icon:'◎', cls:'mint-bg', x:10, y:38, status:'In Progress', type:'progress', detail:'商品根拠・市場・競合クリエイティブを確認', progress:68 },
+    { id:'script', name:'Script Agent', icon:'✎', cls:'cyan-bg', x:40, y:38, status:'Ready', type:'progress', detail:'30秒・9:16の共通マスタースクリプトを作成', progress:20 },
+    { id:'video', name:'Video Agent', icon:'▧', cls:'pink-bg', x:70, y:38, status:'Waiting', type:'waiting', detail:'Approved Scriptと絵コンテ完了後に制作開始', progress:0 },
+    { id:'operations', name:'Operations Agent', icon:'⌘', cls:'mint-bg', x:55, y:69, status:'Planned', type:'waiting', detail:'TikTok・Reels・Shortsの投稿仕様と検証を管理', progress:0 }
+  ]
+};
 
 function createInitialProjectWorks() {
   const projectManager = structuredClone(baseNodes.find(node => node.id === 'pm'));
@@ -165,7 +185,7 @@ function closeProjectSearch() {
 function openProject(id) {
   closeFullWorkspace();
   selectedProject = id;
-  nodes = structuredClone(projectWorks[id] || baseNodes);
+  nodes = structuredClone(projectWorks[id] || sampleProjectWorks[id] || baseNodes);
   const latest = outputs[id]?.at(-1);
   if (latest) updateScriptNode('Completed', 'done', latest.script.title, 100);
   app.classList.remove('sidebar-hidden');
@@ -173,13 +193,15 @@ function openProject(id) {
   canvas.classList.remove('hidden');
   renderProjects();
   const project = projects.find(item => item.id === id);
-  $('breadcrumbs').innerHTML = `<strong>${project.name}</strong><span class="active-project-pill">● Active Project</span><span class="project-subline">› YouTube Organic 広告制作プロジェクト　✎</span>`;
+  const details = projectDetails[id] || {};
+  $('breadcrumbs').innerHTML = `<strong>${project.name}</strong><span class="active-project-pill">● Active Project</span><span class="project-subline">› ${escapeHtml(details.campaign || 'YouTube Organic 広告制作プロジェクト')}　✎</span>`;
   $('chatTitle').textContent = 'AI Script Agent';
   $('chatSubtitle').textContent = '商品の情報を普段の言葉で教えてください。';
   renderNodes();
   renderHistory();
   if (latest) renderOutput(latest);
-  const initialNode = nodes.find(node => node.id === 'script')
+  const initialNode = nodes.find(node => node.id === details.defaultNode)
+    || nodes.find(node => node.id === 'script')
     || nodes.find(node => node.id === 'research')
     || nodes.find(node => node.id !== 'pm');
   if (initialNode) requestAnimationFrame(() => selectNode(initialNode.id));
@@ -234,7 +256,7 @@ function enableDrag(element, node) {
 
 function drawConnections() {
   connections.innerHTML = '';
-  const pairs = [['pm', 'research', '#56d9aa'], ['research', 'script', '#4bcdb2'], ['pm', 'script', '#4f83ff'], ['pm', 'animation', '#f34eb4'], ['script', 'animation', '#f15fb7'], ['script', 'shadow', '#ff8b36']];
+  const pairs = [['pm', 'research', '#56d9aa'], ['research', 'script', '#4bcdb2'], ['pm', 'script', '#4f83ff'], ['pm', 'animation', '#f34eb4'], ['script', 'animation', '#f15fb7'], ['script', 'shadow', '#ff8b36'], ['script', 'video', '#f15fb7'], ['video', 'operations', '#56d9aa']];
   const canvasRect = canvas.getBoundingClientRect();
   pairs.forEach(([a, b, color]) => {
     const first = nodeLayer.querySelector(`[data-id="${a}"]`), second = nodeLayer.querySelector(`[data-id="${b}"]`);
@@ -280,7 +302,7 @@ function renderInspectorDetails(node) {
   }[key];
   const completed = Math.max(0, Math.floor((node.progress || 0) / 25));
   $('inspectorSteps').innerHTML = config.steps.map((step,index) => `<li class="${index < completed ? 'done' : index === completed ? 'active' : ''}">${index < completed ? '✓' : index === completed ? '●' : '○'} ${escapeHtml(step)}<em>${index < completed ? '完了' : index === completed ? '進行中' : '待機中'}</em></li>`).join('');
-  $('inspectorMeta').innerHTML = `<div><span>Owner</span><b>${escapeHtml(details.owner)}</b></div><div><span>Deadline</span><b>${escapeHtml(details.deadline)}</b></div><div><span>Final requirement</span><b>${escapeHtml(details.requirement)}</b></div>`;
+  $('inspectorMeta').innerHTML = `<div><span>Owner</span><b>${escapeHtml(details.owner)}</b></div><div><span>Deadline</span><b>${escapeHtml(details.deadline)}</b></div>${details.platforms ? `<div><span>Platforms</span><b>${escapeHtml(details.platforms)}</b></div>` : ''}<div><span>Final requirement</span><b>${escapeHtml(details.requirement)}</b></div>${details.source ? `<div><span>Reference</span><b><a href="${escapeHtml(details.source)}" target="_blank" rel="noopener">Official product page ↗</a></b></div>` : ''}`;
   $('inspectorCurrentTask').innerHTML = `<b>${escapeHtml(config.task)}</b><span>${escapeHtml(node.detail)}</span>`;
 }
 
