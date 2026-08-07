@@ -117,6 +117,7 @@ const shadowOutputs = loadShadowOutputs();
 const animeOutputs = loadAnimeOutputs();
 let activeWorkspaceNodeId = null;
 let activeScriptExportSection = 3;
+let searchRequestSequence = 0;
 
 const $ = id => document.getElementById(id);
 const app = $('app');
@@ -301,14 +302,32 @@ function renderProjects() {
   if (add) add.onclick = createProject;
 }
 
-function renderProjectSearch(query = '') {
+async function renderProjectSearch(query = '') {
   const value = query.trim().toLowerCase();
-  const results = value ? projects.filter(project => `${project.name} ${project.sub} ${project.id}`.toLowerCase().includes(value)) : projects;
+  const localResults = value ? projects.filter(project => `${project.name} ${project.sub} ${project.id}`.toLowerCase().includes(value)).map(project => ({ result_type:'project', project_id:project.id, title:project.name, subtitle:project.sub })) : projects.map(project => ({ result_type:'project', project_id:project.id, title:project.name, subtitle:project.sub }));
+  const sequence = ++searchRequestSequence;
+  let results = localResults;
+  if (value.length >= 2) {
+    try {
+      const remote = await dataRequest('/v1/search', { query:{ organization_id:organizationId, q:query.trim() } });
+      if (sequence !== searchRequestSequence) return;
+      const remoteProjectIds = new Set(remote.results.filter(item => item.result_type === 'project').map(item => item.project_id));
+      results = [...remote.results, ...localResults.filter(item => !remoteProjectIds.has(item.project_id))];
+    } catch { /* Keep local search available if the database is temporarily offline. */ }
+  }
   $('searchResults').innerHTML = results.length
-    ? `<small>PROJECTS</small>${results.slice(0, 8).map(project => `<button data-search-project="${project.id}"><span class="search-project-icon">${escapeHtml(project.mark)}</span><div><b>${escapeHtml(project.name)}</b><em>${escapeHtml(project.sub)}</em></div><i>Open →</i></button>`).join('')}`
+    ? `<small>${value ? 'PROJECTS · WORK · DELIVERABLES' : 'PROJECTS'}</small>${results.slice(0, 12).map(result => `<button data-search-project="${escapeHtml(result.project_id)}" data-search-work="${escapeHtml(result.work_id || '')}" data-result-type="${escapeHtml(result.result_type)}"><span class="search-project-icon">${result.result_type === 'project' ? 'P' : result.result_type === 'work' ? 'W' : 'D'}</span><div><b>${escapeHtml(result.title)}</b><em>${escapeHtml(result.subtitle || '')}</em></div><i>${result.work_id ? 'Open Work →' : 'Open →'}</i></button>`).join('')}`
     : '<div class="no-search-result">該当するProjectがありません</div>';
   $('searchResults').classList.remove('hidden');
-  document.querySelectorAll('[data-search-project]').forEach(button => { button.onclick = event => { event.preventDefault(); openProject(button.dataset.searchProject); closeProjectSearch(); }; });
+  document.querySelectorAll('[data-search-project]').forEach(button => { button.onclick = event => { event.preventDefault(); openSearchResult(button.dataset.searchProject, button.dataset.searchWork); }; });
+}
+
+async function openSearchResult(projectId, workId) {
+  await openProject(projectId);
+  closeProjectSearch();
+  if (!workId) return;
+  const node = nodes.find(item => item.id === workId);
+  if (node) openFullWorkspace(node.id);
 }
 
 function closeProjectSearch() {

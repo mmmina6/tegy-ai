@@ -64,3 +64,26 @@ test('data proxy forwards deliverable versions without exposing the service toke
     if (originalToken === undefined) delete process.env.TEGY_API_TOKEN; else process.env.TEGY_API_TOKEN = originalToken;
   }
 });
+
+test('data proxy forwards global content search filters', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.TEGY_API_URL;
+  const originalToken = process.env.TEGY_API_TOKEN;
+  process.env.TEGY_API_URL = 'https://tegy-api.example.com';
+  process.env.TEGY_API_TOKEN = 'internal-search-token';
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url.toString(), 'https://tegy-api.example.com/v1/search?organization_id=tegy&q=Kao');
+    assert.equal(options.headers.authorization, 'Bearer internal-search-token');
+    return { status: 200, json: async () => ({ results: [{ result_type: 'deliverable', title: 'Kao Script' }] }) };
+  };
+  try {
+    const response = responseRecorder();
+    await handler({ method: 'GET', query: { path: '/v1/search', organization_id: 'tegy', q: 'Kao' } }, response);
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.payload.results[0].result_type, 'deliverable');
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.TEGY_API_URL; else process.env.TEGY_API_URL = originalUrl;
+    if (originalToken === undefined) delete process.env.TEGY_API_TOKEN; else process.env.TEGY_API_TOKEN = originalToken;
+  }
+});
