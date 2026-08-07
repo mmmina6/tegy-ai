@@ -111,6 +111,7 @@ let selectedNode = null;
 let generating = false;
 const outputs = loadOutputs();
 const storyboardImages = {};
+const generatedVideos = {};
 const projectWorks = loadProjectWorks();
 const researchOutputs = loadResearchOutputs();
 const shadowOutputs = loadShadowOutputs();
@@ -546,6 +547,7 @@ function renderDeliveryWorkspace(key, node) {
     const form = $('animeWorkspaceForm');
     if (form) form.onsubmit = event => { event.preventDefault(); runAnimeWorkspace(); };
     document.querySelectorAll('[data-anime-shot]').forEach(button => { button.onclick = () => generateAnimeStoryboardFrame(button.dataset.animeShot); });
+    wireAnimeVideoQueue();
     document.querySelectorAll('[data-export-index]').forEach(button => { button.onclick = () => exportAnimePackage(Number(button.dataset.exportIndex)); });
   }
 }
@@ -622,7 +624,7 @@ async function startGenerationJob(mediaType, input) {
 async function finishGenerationJob(job, status, payload = {}) {
   if (!job?.id) return;
   try {
-    await dataRequest(`/v1/generation-jobs/${job.id}`, { method:'PATCH', body:{ status, model:payload.model, usage_units:status === 'completed' ? 1 : 0, output:status === 'completed' ? { model:payload.model, usage:payload.usage || null, asset_state:'generated_in_browser' } : {}, error_message:status === 'failed' ? payload.error : null } });
+    await dataRequest(`/v1/generation-jobs/${job.id}`, { method:'PATCH', body:{ status, model:payload.model, usage_units:payload.usageUnits ?? (status === 'completed' ? 1 : 0), estimated_cost_usd:payload.estimatedCostUsd ?? null, output:status === 'completed' ? { model:payload.model, usage:payload.usage || null, video_uri:payload.videoUri || null, asset_state:payload.videoUri ? 'ready_for_delivery' : 'generated_in_browser' } : payload.output || {}, error_message:status === 'failed' ? payload.error : null } });
   } catch { /* Generation remains usable even if accounting is temporarily offline. */ }
 }
 
@@ -688,6 +690,68 @@ async function generateAnimeStoryboardFrame(shotNumber) {
     await finishGenerationJob(job,'completed',payload);
     renderDeliveryWorkspace('animation',nodes.find(item=>item.id===activeWorkspaceNodeId)); $('workspaceSaveStatus').textContent=`✓ ${shotNumber} frame generated`;
   }catch(error){await finishGenerationJob(job,'failed',{error:error.message});button.disabled=false;button.textContent='Generate Frame';$('workspaceSaveStatus').textContent=error.message;}
+}
+
+function wireAnimeVideoQueue() {
+  const result = animeOutputs[selectedProject]?.at(-1);
+  if (!result) return;
+  const shots = animeShotList(result);
+  document.querySelectorAll('.anime-video-queue article').forEach((row,index) => {
+    const shot = shots[index];
+    if (!shot) return;
+    const image = storyboardImages[selectedProject]?.[animeImageKey(result,shot.shotNumber)];
+    const video = generatedVideos[`${selectedProject}:${shot.shotNumber}`];
+    const status = row.querySelector('span');
+    const control = row.querySelector('button');
+    if (video) {
+      if (status) status.textContent = 'Video ready';
+      if (control) { control.disabled = false; control.textContent = 'Preview / Download'; control.onclick = () => window.open(video.url, '_blank'); }
+    } else if (image && control) {
+      if (status) status.textContent = 'Ready for animation';
+      control.disabled = false; control.textContent = 'Send to Veo'; control.onclick = () => generateAnimeShotVideo(shot.shotNumber);
+    }
+  });
+}
+
+function veoEstimatedCost(model, seconds, resolution = '720p') {
+  const override = Number(window.TEGY_VEO_PRICE_PER_SECOND);
+  if (Number.isFinite(override) && override >= 0) return override * seconds;
+  if (model.includes('lite')) return (resolution === '1080p' ? 0.08 : 0.05) * seconds;
+  if (model.includes('fast')) return (resolution === '1080p' ? 0.12 : 0.10) * seconds;
+  return 0.40 * seconds;
+}
+
+async function generateAnimeShotVideo(shotNumber) {
+  const result = animeOutputs[selectedProject]?.at(-1);
+  const shot = animeShotList(result).find(item => item.shotNumber === shotNumber);
+  const image = storyboardImages[selectedProject]?.[animeImageKey(result,shotNumber)];
+  if (!result || !shot || !image) return;
+  const job = await startGenerationJob('video', { workspace:'anime', shotNumber, prompt:shot.imagePrompt, durationSeconds:8 });
+  $('workspaceSaveStatus').textContent = `● ${shotNumber} video queued...`;
+  try {
+    const startResponse = await fetch('/api/video-generate', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ prompt:`${shot.imagePrompt}. Action: ${shot.characterAction}. Camera: ${shot.camera}. Maintain exact character, wardrobe and art style continuity.`, imageDataUrl:image.dataUrl, aspectRatio:result.treatment.aspectRatio === '1:1' ? '16:9' : result.treatment.aspectRatio, durationSeconds:8, resolution:'720p' }) });
+    const started = await startResponse.json();
+    if (!startResponse.ok) throw new Error(started.detail || started.error || 'Video generation could not start.');
+    if (job) await dataRequest(`/v1/generation-jobs/${job.id}`, { method:'PATCH', body:{ status:'processing', model:started.model, output:{ operation:started.operation } } });
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve,10000));
+      const response = await fetch(`/api/video-status?operation=${encodeURIComponent(started.operation)}`);
+      const status = await response.json();
+      if (!response.ok) throw new Error(status.detail || status.error || 'Video status failed.');
+      if (!status.done) { $('workspaceSaveStatus').textContent = `● ${shotNumber} video rendering...`; continue; }
+      if (status.error || !status.videoUri) throw new Error(status.error || 'Video model returned no file.');
+      const url = `/api/video-file?uri=${encodeURIComponent(status.videoUri)}`;
+      generatedVideos[`${selectedProject}:${shotNumber}`] = { url, model:started.model, operation:started.operation };
+      await finishGenerationJob(job,'completed',{ model:started.model, videoUri:status.videoUri, usageUnits:8, estimatedCostUsd:veoEstimatedCost(started.model,8,'720p') });
+      renderDeliveryWorkspace('animation',nodes.find(item=>item.id===activeWorkspaceNodeId));
+      $('workspaceSaveStatus').textContent = `✓ ${shotNumber} video ready`;
+      return;
+    }
+    throw new Error('Video is still processing. Check Production Control later.');
+  } catch (error) {
+    await finishGenerationJob(job,'failed',{error:error.message});
+    $('workspaceSaveStatus').textContent = error.message;
+  }
 }
 
 function exportAnimePackage(fullPackage) {
