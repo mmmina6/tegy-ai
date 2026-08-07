@@ -3,8 +3,15 @@ const ALLOWED_PATHS = [
   /^\/v1\/projects$/,
   /^\/v1\/projects\/[a-zA-Z0-9_-]+$/,
   /^\/v1\/projects\/[a-zA-Z0-9_-]+\/works$/,
+  /^\/v1\/projects\/[a-zA-Z0-9_-]+\/campaigns$/,
+  /^\/v1\/campaigns\/[a-zA-Z0-9_-]+$/,
   /^\/v1\/works\/[a-zA-Z0-9_-]+$/,
-  /^\/v1\/works\/[a-zA-Z0-9_-]+\/deliverables$/
+  /^\/v1\/works\/[a-zA-Z0-9_-]+\/deliverables$/,
+  /^\/v1\/works\/[a-zA-Z0-9_-]+\/drive-files$/,
+  /^\/v1\/deliverables\/[a-zA-Z0-9_-]+$/,
+  /^\/v1\/deliverables\/[a-zA-Z0-9_-]+\/versions$/,
+  /^\/v1\/deliverables\/[a-zA-Z0-9_-]+\/approvals$/,
+  /^\/v1\/approvals\/[a-zA-Z0-9_-]+$/
 ];
 
 function isAllowedPath(path) {
