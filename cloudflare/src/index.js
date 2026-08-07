@@ -105,6 +105,29 @@ async function createWork(request, env, projectId) {
   return json({ work: parseJsonFields(work) }, 201);
 }
 
+async function campaigns(request, env, projectId) {
+  if (request.method === "GET") {
+    const { results = [] } = await env.DB.prepare(`SELECT * FROM campaigns WHERE project_id=? AND status!='archived' ORDER BY updated_at DESC`).bind(projectId).all();
+    return json({ campaigns: results.map(parseJsonFields) });
+  }
+  const body = await bodyJson(request);
+  const missing = required(body, ["name"]);
+  if (missing.length) return json({ error: `Missing: ${missing.join(", ")}` }, 400);
+  const id = crypto.randomUUID();
+  await env.DB.prepare(`INSERT INTO campaigns (id, project_id, name, objective, platforms_json, brief_json, status) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, projectId, body.name, body.objective || null, JSON.stringify(body.platforms || []), JSON.stringify(body.brief || {}), body.status || "draft").run();
+  return json({ campaign: parseJsonFields(await env.DB.prepare(`SELECT * FROM campaigns WHERE id=?`).bind(id).first()) }, 201);
+}
+
+async function updateCampaign(request, env, campaignId) {
+  const body = await bodyJson(request);
+  const current = await env.DB.prepare(`SELECT * FROM campaigns WHERE id=?`).bind(campaignId).first();
+  if (!current) return json({ error: "Campaign not found" }, 404);
+  await env.DB.prepare(`UPDATE campaigns SET name=?, objective=?, platforms_json=?, brief_json=?, status=?, updated_at=datetime('now') WHERE id=?`)
+    .bind(body?.name ?? current.name, body?.objective ?? current.objective, JSON.stringify(body?.platforms ?? JSON.parse(current.platforms_json || "[]")), JSON.stringify(body?.brief ?? JSON.parse(current.brief_json || "{}")), body?.status ?? current.status, campaignId).run();
+  return json({ campaign: parseJsonFields(await env.DB.prepare(`SELECT * FROM campaigns WHERE id=?`).bind(campaignId).first()) });
+}
+
 async function updateWork(request, env, workId) {
   const body = await bodyJson(request);
   if (!body) return json({ error: "Invalid JSON body" }, 400);
@@ -142,6 +165,62 @@ async function createDeliverable(request, env, workId) {
   return json({ deliverable }, 201);
 }
 
+async function getDeliverable(env, deliverableId) {
+  const deliverable = await env.DB.prepare(`SELECT * FROM deliverables WHERE id=?`).bind(deliverableId).first();
+  if (!deliverable) return json({ error: "Deliverable not found" }, 404);
+  const { results: versions = [] } = await env.DB.prepare(`SELECT * FROM deliverable_versions WHERE deliverable_id=? ORDER BY version_number DESC`).bind(deliverableId).all();
+  const { results: approvals = [] } = await env.DB.prepare(`SELECT * FROM approvals WHERE deliverable_id=? ORDER BY created_at DESC`).bind(deliverableId).all();
+  const { results: files = [] } = await env.DB.prepare(`SELECT * FROM drive_files WHERE deliverable_id=? ORDER BY updated_at DESC`).bind(deliverableId).all();
+  return json({ deliverable, versions: versions.map(parseJsonFields), approvals, drive_files: files });
+}
+
+async function createVersion(request, env, deliverableId) {
+  const body = await bodyJson(request);
+  if (!body || typeof body.content !== "object") return json({ error: "content is required" }, 400);
+  const deliverable = await env.DB.prepare(`SELECT * FROM deliverables WHERE id=?`).bind(deliverableId).first();
+  if (!deliverable) return json({ error: "Deliverable not found" }, 404);
+  const versionNumber = Number(deliverable.current_version) + 1;
+  const id = crypto.randomUUID();
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO deliverable_versions (id, deliverable_id, version_number, content_json, change_summary, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?)`).bind(id, deliverableId, versionNumber, JSON.stringify(body.content), body.change_summary || null, body.created_by_user_id || null),
+    env.DB.prepare(`UPDATE deliverables SET current_version=?, status='draft', updated_at=datetime('now') WHERE id=?`).bind(versionNumber, deliverableId)
+  ]);
+  return json({ version: parseJsonFields(await env.DB.prepare(`SELECT * FROM deliverable_versions WHERE id=?`).bind(id).first()) }, 201);
+}
+
+async function createApproval(request, env, deliverableId) {
+  const body = await bodyJson(request) || {};
+  const id = crypto.randomUUID();
+  await env.DB.prepare(`INSERT INTO approvals (id, deliverable_id, requested_by_user_id, reviewer_user_id, status, comment) VALUES (?, ?, ?, ?, 'pending', ?)`)
+    .bind(id, deliverableId, body.requested_by_user_id || null, body.reviewer_user_id || null, body.comment || null).run();
+  await env.DB.prepare(`UPDATE deliverables SET status='review', updated_at=datetime('now') WHERE id=?`).bind(deliverableId).run();
+  return json({ approval: await env.DB.prepare(`SELECT * FROM approvals WHERE id=?`).bind(id).first() }, 201);
+}
+
+async function updateApproval(request, env, approvalId) {
+  const body = await bodyJson(request);
+  if (!body || !["approved", "changes_requested", "cancelled"].includes(body.status)) return json({ error: "Invalid approval status" }, 400);
+  const approval = await env.DB.prepare(`SELECT * FROM approvals WHERE id=?`).bind(approvalId).first();
+  if (!approval) return json({ error: "Approval not found" }, 404);
+  await env.DB.prepare(`UPDATE approvals SET status=?, comment=?, decided_at=datetime('now') WHERE id=?`).bind(body.status, body.comment ?? approval.comment, approvalId).run();
+  if (body.status === "approved") await env.DB.prepare(`UPDATE deliverables SET status='approved', updated_at=datetime('now') WHERE id=?`).bind(approval.deliverable_id).run();
+  return json({ approval: await env.DB.prepare(`SELECT * FROM approvals WHERE id=?`).bind(approvalId).first() });
+}
+
+async function driveFiles(request, env, workId) {
+  if (request.method === "GET") {
+    const { results = [] } = await env.DB.prepare(`SELECT * FROM drive_files WHERE work_id=? ORDER BY updated_at DESC`).bind(workId).all();
+    return json({ drive_files: results });
+  }
+  const body = await bodyJson(request);
+  const missing = required(body, ["organization_id", "google_drive_file_id", "file_name"]);
+  if (missing.length) return json({ error: `Missing: ${missing.join(", ")}` }, 400);
+  const id = crypto.randomUUID();
+  await env.DB.prepare(`INSERT INTO drive_files (id, organization_id, project_id, work_id, deliverable_id, google_drive_file_id, shared_drive_id, mime_type, file_name, web_view_link, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, body.organization_id, body.project_id || null, workId, body.deliverable_id || null, body.google_drive_file_id, body.shared_drive_id || null, body.mime_type || null, body.file_name, body.web_view_link || null, body.created_by_user_id || null).run();
+  return json({ drive_file: await env.DB.prepare(`SELECT * FROM drive_files WHERE id=?`).bind(id).first() }, 201);
+}
+
 async function route(request, env) {
   const url = new URL(request.url);
   if (request.method === "GET" && url.pathname === "/health") return json({ ok: true, service: "tegy-api", database: "d1" });
@@ -158,6 +237,11 @@ async function route(request, env) {
   const projectWorksMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/works$/);
   if (projectWorksMatch && request.method === "POST") return createWork(request, env, projectWorksMatch[1]);
 
+  const campaignsMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/campaigns$/);
+  if (campaignsMatch && ["GET", "POST"].includes(request.method)) return campaigns(request, env, campaignsMatch[1]);
+  const campaignMatch = url.pathname.match(/^\/v1\/campaigns\/([^/]+)$/);
+  if (campaignMatch && request.method === "PATCH") return updateCampaign(request, env, campaignMatch[1]);
+
   const workMatch = url.pathname.match(/^\/v1\/works\/([^/]+)$/);
   if (workMatch && request.method === "PATCH") return updateWork(request, env, workMatch[1]);
   if (workMatch && request.method === "DELETE") return archiveWork(env, workMatch[1]);
@@ -165,6 +249,17 @@ async function route(request, env) {
   const deliverablesMatch = url.pathname.match(/^\/v1\/works\/([^/]+)\/deliverables$/);
   if (deliverablesMatch && request.method === "GET") return listDeliverables(env, deliverablesMatch[1]);
   if (deliverablesMatch && request.method === "POST") return createDeliverable(request, env, deliverablesMatch[1]);
+
+  const driveFilesMatch = url.pathname.match(/^\/v1\/works\/([^/]+)\/drive-files$/);
+  if (driveFilesMatch && ["GET", "POST"].includes(request.method)) return driveFiles(request, env, driveFilesMatch[1]);
+  const deliverableMatch = url.pathname.match(/^\/v1\/deliverables\/([^/]+)$/);
+  if (deliverableMatch && request.method === "GET") return getDeliverable(env, deliverableMatch[1]);
+  const versionsMatch = url.pathname.match(/^\/v1\/deliverables\/([^/]+)\/versions$/);
+  if (versionsMatch && request.method === "POST") return createVersion(request, env, versionsMatch[1]);
+  const approvalsMatch = url.pathname.match(/^\/v1\/deliverables\/([^/]+)\/approvals$/);
+  if (approvalsMatch && request.method === "POST") return createApproval(request, env, approvalsMatch[1]);
+  const approvalMatch = url.pathname.match(/^\/v1\/approvals\/([^/]+)$/);
+  if (approvalMatch && request.method === "PATCH") return updateApproval(request, env, approvalMatch[1]);
 
   return json({ error: "Not found" }, 404);
 }
@@ -180,4 +275,3 @@ export default {
     }
   },
 };
-
