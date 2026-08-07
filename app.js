@@ -683,8 +683,9 @@ function prepareScriptSections() {
     const versions = document.createElement('section');
     versions.className = 'script-versions-panel script-stage-panel';
     versions.dataset.scriptSection = '6';
-    versions.innerHTML = `<header><small>07 · VERSIONS</small><h2>Script Versions</h2><p>生成・編集したVersionを比較し、承認版を管理します。</p></header><article><div><b>Version 01</b><span>Current · Review</span></div><strong>${escapeHtml(outputs[selectedProject]?.at(-1)?.script?.title || 'Untitled Script')}</strong><small>${escapeHtml(outputs[selectedProject]?.at(-1)?.createdAt?.slice(0,10) || 'Demo')}</small></article>`;
+    versions.innerHTML = `<header><small>07 · VERSIONS</small><h2>Script Versions</h2><p>生成・編集したVersionを比較し、承認版を管理します。</p></header><div class="script-review-actions"><span>Loading version history...</span></div><div class="script-version-list"></div>`;
     editor.insertAdjacentElement('afterend', versions);
+    loadScriptVersionPanel();
   }
   showScriptSection(editor ? 1 : 0);
 }
@@ -708,8 +709,9 @@ function showScriptSection(index) {
   if (main) main.scrollTop = 0;
 }
 
-function saveScriptWorkspaceEdits() {
+async function saveScriptWorkspaceEdits() {
   const latest = outputs[selectedProject]?.at(-1);
+  const node = nodes.find(item => item.id === activeWorkspaceNodeId);
   if (!latest) return;
   document.querySelectorAll('[data-script-field]').forEach(element => { latest.script[element.dataset.scriptField] = element.textContent.trim(); });
   document.querySelectorAll('[data-scene-index]').forEach(row => {
@@ -717,7 +719,69 @@ function saveScriptWorkspaceEdits() {
     row.querySelectorAll('[data-scene-field]').forEach(element => { scene[element.dataset.sceneField] = element.textContent.trim(); });
   });
   saveOutputs();
-  $('workspaceSaveStatus').textContent = '✓ Manual edits saved';
+  $('workspaceSaveStatus').textContent = '● Saving manual version...';
+  try {
+    if (node?.remote && node.deliverableId) {
+      await dataRequest(`/v1/deliverables/${node.deliverableId}/versions`, { method:'POST', body:{ content:latest, change_summary:'Manual script edit' } });
+      await loadScriptVersionPanel();
+    }
+    $('workspaceSaveStatus').textContent = '✓ Manual edits saved as a new version';
+  } catch (error) {
+    $('workspaceSaveStatus').textContent = `Saved locally · ${error.message}`;
+  }
+}
+
+function scriptVersionCard(version, currentVersion) {
+  const content = version.content || {};
+  const title = content.script?.title || 'Untitled Script';
+  const created = version.created_at ? new Date(`${version.created_at}Z`).toLocaleString('ja-JP') : 'Saved';
+  return `<article><div><b>Version ${String(version.version_number).padStart(2,'0')}</b><span>${version.version_number === currentVersion ? 'Current' : 'Archived'} · ${escapeHtml(version.change_summary || 'Script update')}</span></div><strong>${escapeHtml(title)}</strong><small>${escapeHtml(created)}</small></article>`;
+}
+
+async function loadScriptVersionPanel() {
+  const panel = document.querySelector('.script-versions-panel');
+  const node = nodes.find(item => item.id === activeWorkspaceNodeId);
+  if (!panel || !node || getWorkspaceKey(node) !== 'script') return;
+  const actions = panel.querySelector('.script-review-actions');
+  const list = panel.querySelector('.script-version-list');
+  const localVersions = outputs[selectedProject] || [];
+  if (!node?.remote || !node.deliverableId) {
+    actions.innerHTML = '<span>Local preview · Database connection is available after this Work is saved.</span>';
+    list.innerHTML = localVersions.slice().reverse().map((content,index) => scriptVersionCard({ version_number:localVersions.length-index, content, change_summary:'Local script version', created_at:content.createdAt }, localVersions.length)).join('');
+    return;
+  }
+  try {
+    const payload = await dataRequest(`/v1/deliverables/${node.deliverableId}`);
+    const pending = payload.approvals.find(item => item.status === 'pending');
+    const latestDecision = payload.approvals.find(item => item.status !== 'pending');
+    const status = pending ? 'Review pending' : payload.deliverable.status === 'approved' ? 'Approved' : latestDecision?.status === 'changes_requested' ? 'Changes requested' : 'Draft';
+    actions.innerHTML = `<span class="script-review-status ${escapeHtml(payload.deliverable.status)}">${escapeHtml(status)}</span>${pending ? `<button data-approval-action="approved" data-approval-id="${escapeHtml(pending.id)}">Approve</button><button class="secondary" data-approval-action="changes_requested" data-approval-id="${escapeHtml(pending.id)}">Request changes</button>` : `<button data-request-script-review>Request review</button>`}`;
+    list.innerHTML = payload.versions.map(version => scriptVersionCard(version, payload.deliverable.current_version)).join('');
+    panel.querySelector('[data-request-script-review]')?.addEventListener('click', requestScriptReview);
+    panel.querySelectorAll('[data-approval-action]').forEach(button => button.addEventListener('click', () => decideScriptApproval(button.dataset.approvalId, button.dataset.approvalAction)));
+  } catch (error) {
+    actions.innerHTML = `<span>Version history unavailable · ${escapeHtml(error.message)}</span>`;
+  }
+}
+
+async function requestScriptReview() {
+  const node = nodes.find(item => item.id === activeWorkspaceNodeId);
+  if (!node?.deliverableId) return;
+  $('workspaceSaveStatus').textContent = '● Requesting review...';
+  try {
+    await dataRequest(`/v1/deliverables/${node.deliverableId}/approvals`, { method:'POST', body:{ comment:'Script ready for review' } });
+    await loadScriptVersionPanel();
+    $('workspaceSaveStatus').textContent = '✓ Review requested';
+  } catch (error) { $('workspaceSaveStatus').textContent = error.message; }
+}
+
+async function decideScriptApproval(approvalId, status) {
+  $('workspaceSaveStatus').textContent = '● Updating review...';
+  try {
+    await dataRequest(`/v1/approvals/${approvalId}`, { method:'PATCH', body:{ status } });
+    await loadScriptVersionPanel();
+    $('workspaceSaveStatus').textContent = status === 'approved' ? '✓ Script approved' : '↻ Changes requested';
+  } catch (error) { $('workspaceSaveStatus').textContent = error.message; }
 }
 
 function storyboardKey(result, index) {
@@ -812,6 +876,15 @@ async function runScriptWorkspace() {
     outputs[selectedProject] ||= [];
     outputs[selectedProject].push(payload);
     saveOutputs();
+    if (node.remote) {
+      if (node.deliverableId) {
+        await dataRequest(`/v1/deliverables/${node.deliverableId}/versions`, { method:'POST', body:{ content:payload, change_summary:'AI script regeneration' } });
+      } else {
+        const saved = await dataRequest(`/v1/works/${node.id}/deliverables`, { method:'POST', body:{ kind:'script', title:payload.script.title, content:payload, change_summary:'Initial AI script' } });
+        node.deliverableId = saved.deliverable.id;
+      }
+      await dataRequest(`/v1/works/${node.id}`, { method:'PATCH', body:{ status:'completed', progress:100, workspace_state:{ x:node.x, y:node.y, detail:payload.script.title, deliverableId:node.deliverableId } } });
+    }
     node.status = 'Completed'; node.progress = 100; node.detail = payload.script.title; saveProjectWorks();
     renderDeliveryWorkspace('script', node);
     $('workspaceSaveStatus').textContent = '✓ Script generated and saved';
