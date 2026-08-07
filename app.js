@@ -154,7 +154,7 @@ function nodeFromWork(work) {
   const name = work.title;
   const map = { research: ['◎','mint-bg'], script: ['✎','cyan-bg'], shadow_ban_seo: ['⬡','orange-bg'], anime: ['▷','pink-bg'], video: ['▧','pink-bg'], operations: ['⌘','mint-bg'] };
   const [icon, cls] = map[work.type] || ['✦','cyan-bg'];
-  return { id:work.id, remote:true, workType:work.type, name, icon, cls, x:state.x ?? 42, y:state.y ?? 43, status:work.status === 'completed' ? 'Completed' : 'Ready', type:work.status === 'completed' ? 'done' : 'progress', detail:state.detail || 'Project Work', progress:work.progress || 0 };
+  return { id:work.id, remote:true, workType:work.type, deliverableId:state.deliverableId || null, name, icon, cls, x:state.x ?? 42, y:state.y ?? 43, status:work.status === 'completed' ? 'Completed' : 'Ready', type:work.status === 'completed' ? 'done' : 'progress', detail:state.detail || 'Project Work', progress:work.progress || 0 };
 }
 
 async function syncRemoteProjects() {
@@ -879,12 +879,21 @@ async function runActiveWorkspaceAgent() {
   $('workspaceSaveStatus').textContent = '● Research Agent 実行中...';
   node.status = 'In Progress'; node.progress = 55; saveProjectWorks();
   try {
-    const response = await fetch('/api/research', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ projectContext:buildProjectContext(), researchBook:getActiveResearchItems() }) });
+    const response = await fetch('/api/research', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ projectContext:buildProjectContext(), researchBook:getActiveResearchItems(), enableWebResearch:true }) });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.detail || payload.error || 'Research failed.');
     researchOutputs[selectedProject] ||= [];
     researchOutputs[selectedProject].push(payload);
     saveResearchOutputs();
+    if (node.remote) {
+      if (node.deliverableId) {
+        await dataRequest(`/v1/deliverables/${node.deliverableId}/versions`, { method:'POST', body:{ content:payload, change_summary:'Research rerun with refreshed evidence' } });
+      } else {
+        const saved = await dataRequest(`/v1/works/${node.id}/deliverables`, { method:'POST', body:{ kind:'research_report', title:`${buildProjectContext().name} Research Report`, content:payload, change_summary:'Initial grounded research report' } });
+        node.deliverableId = saved.deliverable.id;
+      }
+      await dataRequest(`/v1/works/${node.id}`, { method:'PATCH', body:{ status:'completed', progress:100, workspace_state:{ x:node.x, y:node.y, detail:'Grounded Research Report', deliverableId:node.deliverableId } } });
+    }
     applyResearchOutput(payload);
     node.status = 'Completed'; node.progress = 100; saveProjectWorks();
     $('workspaceSaveStatus').textContent = '✓ Research Report を保存しました';
@@ -937,6 +946,13 @@ function applyResearchOutput(result) {
     const findings = result.landscape?.[key] || [];
     if (findings.length) targetItems[index].rows = findings.map(item => [item.topic, item.finding, item.sourceUrl || item.evidence, item.needsVerification ? 'Verify' : 'Ready']);
   });
+  const groundedSources = result.webEvidence?.sources || [];
+  if (groundedSources.length) {
+    const existingUrls = new Set(targetItems[0].rows.map(row => row[2]));
+    groundedSources.forEach(source => {
+      if (!existingUrls.has(source.url)) targetItems[0].rows.push([source.title || 'Web source', 'Google Search grounded evidence', source.url, 'Grounded']);
+    });
+  }
   const market = result.marketInsight;
   if (market?.marketPersonas?.length) targetItems[6].rows = market.marketPersonas.map(persona => [persona.name, persona.needs.join(' / '), persona.context, persona.evidenceBasis.join(' / ')]).concat([['Primary Market Insight','',market.primaryMarketInsight,'Research Agent']]);
   if (result.strategy?.strategicDirections?.length) targetItems[7].rows = result.strategy.strategicDirections.map(item => [String(item.priority), item.direction, item.rationale, item.recommendedWork]);
