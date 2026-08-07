@@ -126,6 +126,50 @@ const inspector = $('inspector');
 const nodeLayer = $('nodeLayer');
 const connections = $('connections');
 const fullWorkspace = $('fullWorkspace');
+const organizationId = 'tegy';
+
+async function dataRequest(path, options = {}) {
+  const query = new URLSearchParams({ path, ...(options.query || {}) });
+  const response = await fetch(`/api/data?${query}`, {
+    method: options.method || 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+  const payload = await response.json().catch(() => ({ error: 'Invalid database response.' }));
+  if (!response.ok) throw new Error(payload.error || 'Database request failed.');
+  return payload;
+}
+
+function workTypeFromName(name) {
+  if (/research/i.test(name)) return 'research';
+  if (/script/i.test(name)) return 'script';
+  if (/shadow|seo/i.test(name)) return 'shadow_ban_seo';
+  if (/anime|animation/i.test(name)) return 'anime';
+  if (/video/i.test(name)) return 'video';
+  return 'operations';
+}
+
+function nodeFromWork(work) {
+  const state = work.workspace_state || {};
+  const name = work.title;
+  const map = { research: ['◎','mint-bg'], script: ['✎','cyan-bg'], shadow_ban_seo: ['⬡','orange-bg'], anime: ['▷','pink-bg'], video: ['▧','pink-bg'], operations: ['⌘','mint-bg'] };
+  const [icon, cls] = map[work.type] || ['✦','cyan-bg'];
+  return { id:work.id, remote:true, workType:work.type, name, icon, cls, x:state.x ?? 42, y:state.y ?? 43, status:work.status === 'completed' ? 'Completed' : 'Ready', type:work.status === 'completed' ? 'done' : 'progress', detail:state.detail || 'Project Work', progress:work.progress || 0 };
+}
+
+async function syncRemoteProjects() {
+  try {
+    const { projects: remoteProjects } = await dataRequest('/v1/projects', { query:{ organization_id:organizationId } });
+    remoteProjects.forEach(project => {
+      if (projects.some(item => item.id === project.id)) return;
+      projects.push({ id:project.id, remote:true, name:project.project_name, sub:project.client_name, mark:project.project_name.trim().charAt(0) || '＋' });
+      projectDetails[project.id] = { owner:'Mina Rho', deadline:project.deadline || '未設定', requirement:project.final_requirement || 'Project Briefで最終要件を設定' };
+    });
+    renderProjects();
+  } catch (error) {
+    console.warn('Remote projects are unavailable:', error);
+  }
+}
 
 const researchItems = [
   { title: 'Company & Product', kicker: '01 · FOUNDATION', description: '会社、商品・サービス、ブランドの事実をプロジェクト共通情報として整理します。', insight: '事実情報と広告表現に使える根拠を分けて管理します。', columns: ['Research item','Finding / evidence','Source / URL','Status'], rows: [['Company overview','企業概要、事業領域、ブランドの強み','','Review'],['Product / service','商品特徴、価格、保証、提供条件','','Open'],['Customer requirement','最終要件と今回の相談背景','','Confirmed']] },
@@ -272,17 +316,27 @@ function closeProjectSearch() {
   $('globalSearch').value = '';
 }
 
-function openProject(id) {
+async function openProject(id) {
   closeFullWorkspace();
   selectedProject = id;
-  nodes = structuredClone(projectWorks[id] || sampleProjectWorks[id] || baseNodes);
+  const project = projects.find(item => item.id === id);
+  if (project?.remote) {
+    try {
+      const payload = await dataRequest(`/v1/projects/${id}`);
+      const pm = createInitialProjectWorks()[0];
+      nodes = [pm, ...payload.works.map(nodeFromWork)];
+      projectWorks[id] = structuredClone(nodes);
+    } catch (error) {
+      alert(error.message);
+      return;
+    }
+  } else nodes = structuredClone(projectWorks[id] || sampleProjectWorks[id] || baseNodes);
   const latest = outputs[id]?.at(-1);
   if (latest) updateScriptNode('Completed', 'done', latest.script.title, 100);
   app.classList.remove('sidebar-hidden');
   welcome.classList.add('hidden');
   canvas.classList.remove('hidden');
   renderProjects();
-  const project = projects.find(item => item.id === id);
   const details = projectDetails[id] || {};
   $('breadcrumbs').innerHTML = `<strong>${project.name}</strong><span class="active-project-pill">● Active Project</span><span class="project-subline">› ${escapeHtml(details.campaign || 'YouTube Organic 広告制作プロジェクト')}　✎</span>`;
   $('chatTitle').textContent = 'AI Script Agent';
@@ -945,19 +999,20 @@ function toggleWorkMenu() {
   $('deleteWork').disabled = selectedNode === 'pm';
 }
 
-function renameSelectedWork() {
+async function renameSelectedWork() {
   const node = nodes.find(item => item.id === selectedNode);
   if (!node || node.id === 'pm') return;
   const name = prompt('Work name', node.name);
   if (!name?.trim()) return;
   node.name = name.trim();
+  if (node.remote) await dataRequest(`/v1/works/${node.id}`, { method:'PATCH', body:{ title:node.name } });
   saveProjectWorks();
   renderNodes();
   selectNode(node.id);
   $('workActionMenu').classList.add('hidden');
 }
 
-function duplicateSelectedWork() {
+async function duplicateSelectedWork() {
   const node = nodes.find(item => item.id === selectedNode);
   if (!node || node.id === 'pm') return;
   const copy = structuredClone(node);
@@ -967,6 +1022,10 @@ function duplicateSelectedWork() {
   copy.y = Math.min(72, node.y + 7);
   copy.status = 'Ready';
   copy.progress = 0;
+  if (node.remote) {
+    const result = await dataRequest(`/v1/projects/${selectedProject}/works`, { method:'POST', body:{ type:node.workType || workTypeFromName(node.name), title:copy.name, workspace_state:{ x:copy.x, y:copy.y, detail:copy.detail } } });
+    Object.assign(copy, nodeFromWork(result.work));
+  }
   nodes.push(copy);
   saveProjectWorks();
   renderNodes();
@@ -974,32 +1033,43 @@ function duplicateSelectedWork() {
   $('workActionMenu').classList.add('hidden');
 }
 
-function deleteSelectedWork() {
+async function deleteSelectedWork() {
   const node = nodes.find(item => item.id === selectedNode);
   if (!node || node.id === 'pm') return;
   if (!confirm(`「${node.name}」をこのProjectから削除しますか？`)) return;
+  if (node.remote) await dataRequest(`/v1/works/${node.id}`, { method:'DELETE' });
   nodes = nodes.filter(item => item.id !== node.id);
   saveProjectWorks();
   closeInspector();
   renderNodes();
 }
 
-function createProject() {
+async function createProject() {
   const name = prompt('新しいプロジェクト名を入力してください');
   if (!name) return;
-  const id = `p${Date.now()}`;
-  projects.push({ id, name, sub: 'New Project', mark: name.trim().charAt(0) || '＋' });
-  projectDetails[id] = { owner:'Mina Rho', deadline:'未設定', requirement:'Project Briefで最終要件を設定' };
-  projectWorks[id] = createInitialProjectWorks();
-  localStorage.setItem('tegy-project-works', JSON.stringify(projectWorks));
-  renderProjects(); openProject(id);
+  try {
+    const result = await dataRequest('/v1/projects', { method:'POST', body:{ organization_id:organizationId, client_name:name.trim(), project_name:name.trim(), final_requirement:'Project Briefで最終要件を設定' } });
+    const id = result.project.id;
+    projects.push({ id, remote:true, name:name.trim(), sub:'New Project', mark:name.trim().charAt(0) || '＋' });
+    projectDetails[id] = { owner:'Mina Rho', deadline:'未設定', requirement:'Project Briefで最終要件を設定' };
+    const researchResult = await dataRequest(`/v1/projects/${id}/works`, { method:'POST', body:{ type:'research', title:'Research Agent', workspace_state:{ x:42, y:43, detail:'Project Briefを入力してリサーチを開始' } } });
+    projectWorks[id] = [createInitialProjectWorks()[0], nodeFromWork(researchResult.work)];
+    renderProjects(); openProject(id);
+  } catch (error) { alert(error.message); }
 }
 
-function addAgent(name) {
+async function addAgent(name) {
   if (!selectedProject) return;
   const map = { 'Research Agent': ['◎', 'mint-bg'], 'Script Agent': ['✎', 'cyan-bg'], 'AI Anime Agent': ['▷', 'pink-bg'], 'Animation Agent': ['▷', 'pink-bg'], 'ShadowBan Agent': ['⬡', 'orange-bg'], 'Video Agent': ['▧', 'pink-bg'], 'Operations Agent': ['⌘', 'mint-bg'] };
   const [icon, cls] = map[name] || ['✦', 'cyan-bg'];
-  const newWork = { id: `n${Date.now()}`, name, icon, cls, x: 38 + Math.random() * 28, y: 45 + Math.random() * 22, status: 'Ready', type: 'progress', detail: '新しいWorkを追加しました', progress: 0 };
+  let newWork = { id: `n${Date.now()}`, name, icon, cls, x: 38 + Math.random() * 28, y: 45 + Math.random() * 22, status: 'Ready', type: 'progress', detail: '新しいWorkを追加しました', progress: 0 };
+  const project = projects.find(item => item.id === selectedProject);
+  if (project?.remote) {
+    try {
+      const result = await dataRequest(`/v1/projects/${selectedProject}/works`, { method:'POST', body:{ type:workTypeFromName(name), title:name, workspace_state:{ x:newWork.x, y:newWork.y, detail:newWork.detail } } });
+      newWork = nodeFromWork(result.work);
+    } catch (error) { alert(error.message); return; }
+  }
   nodes.push(newWork);
   saveProjectWorks();
   renderNodes();
@@ -1124,3 +1194,4 @@ window.addEventListener('resize', drawConnections);
 canvas.onclick = () => closeInspector();
 renderProjects();
 showWelcome();
+syncRemoteProjects();
