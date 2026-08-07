@@ -221,6 +221,37 @@ async function driveFiles(request, env, workId) {
   return json({ drive_file: await env.DB.prepare(`SELECT * FROM drive_files WHERE id=?`).bind(id).first() }, 201);
 }
 
+async function globalSearch(env, url) {
+  const organizationId = url.searchParams.get("organization_id") || "tegy";
+  const query = (url.searchParams.get("q") || "").trim();
+  if (!query) return json({ results: [] });
+  const pattern = `%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+  const { results = [] } = await env.DB.prepare(`
+    SELECT * FROM (
+      SELECT p.id, p.id AS project_id, NULL AS work_id, 'project' AS result_type,
+        p.project_name AS title, p.client_name AS subtitle, p.updated_at
+      FROM projects p
+      WHERE p.organization_id = ? AND p.status != 'archived'
+        AND (p.project_name LIKE ? ESCAPE '\\' OR p.client_name LIKE ? ESCAPE '\\' OR p.final_requirement LIKE ? ESCAPE '\\')
+      UNION ALL
+      SELECT w.id, p.id AS project_id, w.id AS work_id, 'work' AS result_type,
+        w.title AS title, p.project_name || ' · ' || w.type AS subtitle, w.updated_at
+      FROM works w JOIN projects p ON p.id = w.project_id
+      WHERE p.organization_id = ? AND w.status != 'archived'
+        AND (w.title LIKE ? ESCAPE '\\' OR w.type LIKE ? ESCAPE '\\' OR w.workspace_state_json LIKE ? ESCAPE '\\')
+      UNION ALL
+      SELECT d.id, p.id AS project_id, w.id AS work_id, 'deliverable' AS result_type,
+        d.title AS title, p.project_name || ' · ' || d.kind || ' · v' || d.current_version AS subtitle, d.updated_at
+      FROM deliverables d JOIN works w ON w.id = d.work_id JOIN projects p ON p.id = w.project_id
+      WHERE p.organization_id = ? AND d.status != 'archived'
+        AND (d.title LIKE ? ESCAPE '\\' OR d.kind LIKE ? ESCAPE '\\' OR EXISTS (
+          SELECT 1 FROM deliverable_versions dv WHERE dv.deliverable_id = d.id AND dv.content_json LIKE ? ESCAPE '\\'
+        ))
+    ) ORDER BY updated_at DESC LIMIT 30
+  `).bind(organizationId, pattern, pattern, pattern, organizationId, pattern, pattern, pattern, organizationId, pattern, pattern, pattern).all();
+  return json({ results });
+}
+
 async function route(request, env) {
   const url = new URL(request.url);
   if (request.method === "GET" && url.pathname === "/health") return json({ ok: true, service: "tegy-api", database: "d1" });
@@ -229,6 +260,7 @@ async function route(request, env) {
 
   if (url.pathname === "/v1/projects" && request.method === "GET") return listProjects(env, url);
   if (url.pathname === "/v1/projects" && request.method === "POST") return createProject(request, env);
+  if (url.pathname === "/v1/search" && request.method === "GET") return globalSearch(env, url);
 
   const projectMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)$/);
   if (projectMatch && request.method === "GET") return getProject(env, projectMatch[1]);
