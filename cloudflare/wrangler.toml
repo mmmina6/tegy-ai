@@ -1,6 +1,7 @@
 name = "tegy-api"
 main = "src/index.js"
-compatibility_date = "2026-08-01"
+compatibility_date = "2026-08-07"
+preview_urls = false
 
 [[d1_databases]]
 binding = "DB"
@@ -11,3 +12,8 @@ migrations_dir = "migrations"
 [vars]
 ALLOWED_ORIGIN = "https://tegy-ai.vercel.app"
 
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
