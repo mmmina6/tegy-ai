@@ -116,6 +116,7 @@ const projectWorks = loadProjectWorks();
 const researchOutputs = loadResearchOutputs();
 const shadowOutputs = loadShadowOutputs();
 const animeOutputs = loadAnimeOutputs();
+const operationInsights = {};
 let activeWorkspaceNodeId = null;
 let activeScriptExportSection = 3;
 let searchRequestSequence = 0;
@@ -292,7 +293,7 @@ function saveAnimeOutputs() {
 function buildProjectContext() {
   const project = projects.find(item => item.id === selectedProject) || {};
   const details = projectDetails[selectedProject] || {};
-  return { id: project.id, name: project.name, customer: project.sub, owner: details.owner, deadline: details.deadline, finalRequirement: details.requirement };
+  return { id: project.id, name: project.name, customer: project.sub, owner: details.owner, deadline: details.deadline, finalRequirement: details.requirement, operationsLearning:operationInsights[selectedProject] || [] };
 }
 
 function renderProjects() {
@@ -550,6 +551,7 @@ function renderDeliveryWorkspace(key, node) {
     wireAnimeVideoQueue();
     document.querySelectorAll('[data-export-index]').forEach(button => { button.onclick = () => exportAnimePackage(Number(button.dataset.exportIndex)); });
   }
+  if (key === 'operations') loadOperationsWorkspace();
 }
 
 function prepareAgentSections(key, navItems) {
@@ -599,9 +601,47 @@ function deliveryCenterMarkup(type) {
   }
   if (type === 'shadow') return shadowWorkspaceMarkup(shadowOutputs[selectedProject]?.at(-1));
   if (type === 'video') return `<div class="video-board"><div class="video-preview"><button>▷</button><span>00:00 / 00:30</span></div><div class="video-meta"><section><small>REFERENCE ANALYSIS</small><h3>Hook → Proof → CTA</h3><p>最初の3秒、画面変化、字幕密度、CTA の構造を参考動画から抽出。</p></section><section><small>REVIEW STATUS</small><h3>Rough Cut v03</h3><p>2 comments waiting · Mina Rho</p></section></div><div class="timeline"><b>V1</b><i></i><i></i><i></i><b>A1</b><i></i><i></i></div></div>`;
-  if (type === 'operations') return `<div class="operations-board"><div class="calendar-head"><button>←</button><h2>August 2026</h2><button>→</button><span>＋ New Post</span></div><div class="content-calendar">${['MON 3','TUE 4','WED 5','THU 6','FRI 7'].map((day,index)=>`<article><b>${day}</b>${index===1?'<div class="post youtube">YouTube<br><span>How-to video · 18:00</span></div>':''}${index===3?'<div class="post instagram">Instagram<br><span>Reels · Approved</span></div>':''}</article>`).join('')}</div><div class="performance-row"><article><small>VIEWS</small><b>128.4K</b><span>↑ 18%</span></article><article><small>ENGAGEMENT</small><b>6.8%</b><span>↑ 1.2%</span></article><article><small>LEADS</small><b>342</b><span>↑ 24%</span></article></div></div>`;
+  if (type === 'operations') return operationsWorkspaceMarkup();
   if (type === 'brand') return `<div class="brand-board"><div class="brand-hero"><span>BRAND ESSENCE</span><h2>Trust that feels human.</h2><p>専門性を、生活者が理解できる言葉と温度で届ける。</p></div><div class="brand-grid"><article><small>POSITIONING</small><h3>Clear expertise</h3><p>複雑な情報を透明で分かりやすく。</p></article><article><small>TONE OF VOICE</small><h3>Calm · Honest · Warm</h3><p>強く売り込まず、判断を助ける。</p></article><article><small>DO</small><h3>Evidence first</h3><p>具体例、根拠、利用者視点。</p></article><article><small>DON'T</small><h3>Fear or pressure</h3><p>過度な断定と不安訴求を避ける。</p></article></div></div>`;
   return `<div class="manager-board"><div class="manager-summary"><article><small>WORK</small><b>6</b><span>2 in progress</span></article><article><small>REVIEWS</small><b>3</b><span>Client decision</span></article><article><small>DEADLINE</small><b>28 Aug</b><span>27 days left</span></article></div><div class="dependency-map"><div>Research</div><i>→</i><div>AI Script</div><i>→</i><div>Video</div><i>→</i><div>Operations</div></div></div>`;
+}
+
+function operationsWorkspaceMarkup() {
+  return `<div class="operations-board live-operations"><section class="operations-input"><form id="contentItemForm"><small>CONTENT CALENDAR</small><h2>Add planned content</h2><div><input name="title" required placeholder="Content title"><select name="platform"><option>TikTok</option><option>Instagram</option><option>YouTube</option><option>Meta Ads</option></select><input name="scheduled_at" type="datetime-local"><button>Add</button></div></form><form id="performanceForm"><small>PERFORMANCE IMPORT</small><h2>Published result</h2><div><select name="content_item_id" id="performanceContentSelect" required><option value="">Select content</option></select><input name="impressions" type="number" min="0" placeholder="Impressions"><input name="views" type="number" min="0" placeholder="Views"><input name="engagements" type="number" min="0" placeholder="Engagements"><input name="conversions" type="number" min="0" placeholder="Conversions"><button>Save metrics</button></div></form></section><div class="performance-row" id="operationsTotals"><article><small>VIEWS</small><b>—</b></article><article><small>ENGAGEMENTS</small><b>—</b></article><article><small>CONVERSIONS</small><b>—</b></article></div><section class="operations-content-list"><header><small>PUBLISHING & PERFORMANCE</small><h2>Content inventory</h2></header><div id="operationsContentList"><p>Loading...</p></div></section><section class="operations-learning"><header><small>FEEDBACK LOOP</small><h2>Next Research / Script actions</h2></header><div id="operationsInsightList"><p>Metricsから学習内容を生成します。</p></div></section></div>`;
+}
+
+async function loadOperationsWorkspace() {
+  const project = projects.find(item => item.id === selectedProject);
+  if (!project?.remote) return;
+  try {
+    const payload = await dataRequest(`/v1/projects/${selectedProject}/operations`);
+    operationInsights[selectedProject] = payload.insights.map(item => ({ type:item.insight_type, summary:item.summary, action:item.recommended_action }));
+    $('operationsTotals').innerHTML = [['VIEWS',payload.totals.views],['ENGAGEMENTS',payload.totals.engagements],['CONVERSIONS',payload.totals.conversions]].map(([label,value])=>`<article><small>${label}</small><b>${Number(value || 0).toLocaleString()}</b></article>`).join('');
+    $('performanceContentSelect').innerHTML = '<option value="">Select content</option>' + payload.content.map(item=>`<option value="${escapeHtml(item.id)}">${escapeHtml(item.title)} · ${escapeHtml(item.platform)}</option>`).join('');
+    $('operationsContentList').innerHTML = payload.content.length ? payload.content.map(item=>`<article><span class="operations-platform">${escapeHtml(item.platform)}</span><div><b>${escapeHtml(item.title)}</b><small>${escapeHtml(item.status)} · ${escapeHtml(item.scheduled_at || item.published_at || 'No date')}</small></div><em>${Number(item.views || 0).toLocaleString()} views · ${Number(item.engagements || 0).toLocaleString()} engagements</em></article>`).join('') : '<p>No content yet.</p>';
+    $('operationsInsightList').innerHTML = payload.insights.length ? payload.insights.map(item=>`<article><span>${escapeHtml(item.insight_type)}</span><div><b>${escapeHtml(item.summary)}</b><p>${escapeHtml(item.recommended_action)}</p></div></article>`).join('') : '<p>Metricsから学習内容を生成します。</p>';
+    $('contentItemForm').onsubmit = createOperationsContent;
+    $('performanceForm').onsubmit = saveOperationsPerformance;
+  } catch (error) { $('operationsContentList').innerHTML = `<p>${escapeHtml(error.message)}</p>`; }
+}
+
+async function createOperationsContent(event) {
+  event.preventDefault();
+  const node = nodes.find(item => item.id === activeWorkspaceNodeId);
+  const body = Object.fromEntries(new FormData(event.currentTarget));
+  body.work_id = node?.remote ? node.id : null;
+  await dataRequest(`/v1/projects/${selectedProject}/content-items`, { method:'POST', body });
+  event.currentTarget.reset();
+  await loadOperationsWorkspace();
+}
+
+async function saveOperationsPerformance(event) {
+  event.preventDefault();
+  const body = Object.fromEntries(new FormData(event.currentTarget));
+  await dataRequest(`/v1/projects/${selectedProject}/performance`, { method:'POST', body });
+  event.currentTarget.reset();
+  await loadOperationsWorkspace();
+  $('workspaceSaveStatus').textContent = '✓ Performance saved · Next actions updated';
 }
 
 function animeShotList(result) {

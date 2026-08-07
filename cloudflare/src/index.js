@@ -293,6 +293,52 @@ async function usageSummary(env, url) {
   return json({ summary: results });
 }
 
+async function operationsOverview(env, projectId) {
+  const { results: content = [] } = await env.DB.prepare(`SELECT c.*, (SELECT views FROM performance_snapshots p WHERE p.content_item_id=c.id ORDER BY captured_at DESC LIMIT 1) AS views, (SELECT engagements FROM performance_snapshots p WHERE p.content_item_id=c.id ORDER BY captured_at DESC LIMIT 1) AS engagements, (SELECT conversions FROM performance_snapshots p WHERE p.content_item_id=c.id ORDER BY captured_at DESC LIMIT 1) AS conversions FROM content_items c WHERE c.project_id=? AND c.status!='archived' ORDER BY COALESCE(c.scheduled_at,c.created_at) DESC LIMIT 100`).bind(projectId).all();
+  const { results: insights = [] } = await env.DB.prepare(`SELECT * FROM operation_insights WHERE project_id=? AND status='open' ORDER BY created_at DESC LIMIT 30`).bind(projectId).all();
+  const totals = await env.DB.prepare(`SELECT SUM(views) AS views, SUM(engagements) AS engagements, SUM(conversions) AS conversions FROM performance_snapshots WHERE project_id=?`).bind(projectId).first();
+  return json({ content, insights, totals:totals || {} });
+}
+
+async function createContentItem(request, env, projectId) {
+  const body = await bodyJson(request);
+  const missing = required(body,["title","platform"]);
+  if (missing.length) return json({ error:`Missing: ${missing.join(", ")}` },400);
+  const id = crypto.randomUUID();
+  await env.DB.prepare(`INSERT INTO content_items (id, project_id, work_id, deliverable_id, title, platform, status, scheduled_at, published_at, external_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id,projectId,body.work_id || null,body.deliverable_id || null,body.title,body.platform,body.status || "planned",body.scheduled_at || null,body.published_at || null,body.external_url || null).run();
+  return json({ content_item:await env.DB.prepare(`SELECT * FROM content_items WHERE id=?`).bind(id).first() },201);
+}
+
+export function deriveOperationsInsight(itemTitle, values) {
+  const engagementRate = values.views ? values.engagements / values.views : 0;
+  const conversionRate = values.views ? values.conversions / values.views : 0;
+  let insightType = "learning";
+  let summary = `${itemTitle}: ${values.views} views, ${(engagementRate * 100).toFixed(1)}% engagement.`;
+  let action = "Use this result as evidence in the next Research and Script brief.";
+  if (values.views >= 100 && engagementRate >= 0.08) { insightType="winner"; action="Reuse the opening pattern and audience angle in the next Script variation."; }
+  else if (values.impressions >= 1000 && values.views / values.impressions < 0.03) { insightType="weak_hook"; action="Research a new hook and first-frame direction before the next production."; }
+  else if (values.views >= 100 && conversionRate < 0.002) { insightType="weak_cta"; action="Keep the creative direction, but test a clearer proof and CTA in the next Script."; }
+  return { insightType, summary, action };
+}
+
+async function addPerformance(request, env, projectId) {
+  const body = await bodyJson(request) || {};
+  if (!body.content_item_id) return json({ error:"content_item_id is required" },400);
+  const item = await env.DB.prepare(`SELECT * FROM content_items WHERE id=? AND project_id=?`).bind(body.content_item_id,projectId).first();
+  if (!item) return json({ error:"Content item not found" },404);
+  const values = { impressions:Number(body.impressions || 0), views:Number(body.views || 0), engagements:Number(body.engagements || 0), conversions:Number(body.conversions || 0), watchTime:Number(body.watch_time_seconds || 0) };
+  const id = crypto.randomUUID();
+  await env.DB.prepare(`INSERT INTO performance_snapshots (id, project_id, content_item_id, impressions, views, engagements, conversions, watch_time_seconds, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id,projectId,item.id,values.impressions,values.views,values.engagements,values.conversions,values.watchTime,JSON.stringify(body.raw || {})).run();
+  const { insightType, summary, action } = deriveOperationsInsight(item.title, values);
+  const insightId = crypto.randomUUID();
+  await env.DB.prepare(`INSERT INTO operation_insights (id, project_id, content_item_id, insight_type, summary, recommended_action) VALUES (?, ?, ?, ?, ?, ?)`)
+    .bind(insightId,projectId,item.id,insightType,summary,action).run();
+  await env.DB.prepare(`UPDATE content_items SET status='published', published_at=COALESCE(published_at,datetime('now')), updated_at=datetime('now') WHERE id=?`).bind(item.id).run();
+  return json({ snapshot:await env.DB.prepare(`SELECT * FROM performance_snapshots WHERE id=?`).bind(id).first(), insight:await env.DB.prepare(`SELECT * FROM operation_insights WHERE id=?`).bind(insightId).first() },201);
+}
+
 async function route(request, env) {
   const url = new URL(request.url);
   if (request.method === "GET" && url.pathname === "/health") return json({ ok: true, service: "tegy-api", database: "d1" });
@@ -310,6 +356,12 @@ async function route(request, env) {
   const projectMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)$/);
   if (projectMatch && request.method === "GET") return getProject(env, projectMatch[1]);
   if (projectMatch && request.method === "PATCH") return updateProject(request, env, projectMatch[1]);
+  const operationsMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/operations$/);
+  if (operationsMatch && request.method === "GET") return operationsOverview(env, operationsMatch[1]);
+  const contentItemsMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/content-items$/);
+  if (contentItemsMatch && request.method === "POST") return createContentItem(request, env, contentItemsMatch[1]);
+  const performanceMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/performance$/);
+  if (performanceMatch && request.method === "POST") return addPerformance(request, env, performanceMatch[1]);
 
   const projectWorksMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/works$/);
   if (projectWorksMatch && request.method === "POST") return createWork(request, env, projectWorksMatch[1]);
