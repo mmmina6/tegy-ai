@@ -610,6 +610,38 @@ function animeImageKey(result, shotNumber) {
   return `anime:${result.createdAt}:${shotNumber}`;
 }
 
+async function startGenerationJob(mediaType, input) {
+  const node = nodes.find(item => item.id === activeWorkspaceNodeId);
+  if (!node?.remote) return null;
+  try {
+    const payload = await dataRequest('/v1/generation-jobs', { method:'POST', body:{ organization_id:organizationId, project_id:selectedProject, work_id:node.id, deliverable_id:node.deliverableId || null, media_type:mediaType, provider:'google', status:'processing', input } });
+    return payload.job;
+  } catch { return null; }
+}
+
+async function finishGenerationJob(job, status, payload = {}) {
+  if (!job?.id) return;
+  try {
+    await dataRequest(`/v1/generation-jobs/${job.id}`, { method:'PATCH', body:{ status, model:payload.model, usage_units:status === 'completed' ? 1 : 0, output:status === 'completed' ? { model:payload.model, usage:payload.usage || null, asset_state:'generated_in_browser' } : {}, error_message:status === 'failed' ? payload.error : null } });
+  } catch { /* Generation remains usable even if accounting is temporarily offline. */ }
+}
+
+async function openGenerationMonitor() {
+  const dialog = $('generationMonitor');
+  dialog.showModal();
+  $('generationSummary').innerHTML = '<span>Loading usage...</span>';
+  $('generationJobList').innerHTML = '<span>Loading jobs...</span>';
+  try {
+    const query = { organization_id:organizationId, ...(selectedProject ? { project_id:selectedProject } : {}) };
+    const [usage, queue] = await Promise.all([dataRequest('/v1/usage-summary', { query }), dataRequest('/v1/generation-jobs', { query })]);
+    $('generationSummary').innerHTML = usage.summary.length ? usage.summary.map(item => `<article><small>${escapeHtml(item.media_type)} · ${escapeHtml(item.provider)}</small><b>${item.job_count} jobs</b><span>${Number(item.usage_units || 0)} units · $${Number(item.tracked_cost_usd || 0).toFixed(2)} tracked</span></article>`).join('') : '<p>No generation usage recorded for this Project.</p>';
+    $('generationJobList').innerHTML = queue.jobs.length ? queue.jobs.map(job => `<article><span class="job-status ${escapeHtml(job.status)}">${escapeHtml(job.status)}</span><div><b>${escapeHtml(job.media_type.toUpperCase())} · ${escapeHtml(job.model || job.provider)}</b><small>${escapeHtml(new Date(`${job.created_at}Z`).toLocaleString('ja-JP'))}</small></div><em>${Number(job.usage_units || 0)} unit</em></article>`).join('') : '<p>No queued or completed generation jobs.</p>';
+  } catch (error) {
+    $('generationSummary').innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+    $('generationJobList').innerHTML = '';
+  }
+}
+
 function animeWorkspaceMarkup(result) {
   const imported = outputs[selectedProject]?.at(-1);
   const treatment = result?.treatment;
@@ -648,12 +680,14 @@ async function generateAnimeStoryboardFrame(shotNumber) {
   const button=document.querySelector(`[data-anime-shot="${CSS.escape(shotNumber)}"]`);
   if(!result||!shot||!button)return;
   button.disabled=true; button.textContent='Generating...';
+  const job=await startGenerationJob('image',{workspace:'anime',shotNumber,visual:shot.imagePrompt});
   try{
     const response=await fetch('/api/storyboard-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene:{visual:shot.imagePrompt,characterAction:shot.characterAction,camera:shot.camera,location:shot.location},projectContext:buildProjectContext(),scriptContext:{title:result.treatment.title,concept:result.treatment.visualApproach,characters:result.treatment.characters,productionRules:result.treatment.productionRules},aspectRatio:result.treatment.aspectRatio})});
     const payload=await response.json(); if(!response.ok)throw new Error(payload.detail||payload.error||'Frame generation failed.');
     storyboardImages[selectedProject]||={}; storyboardImages[selectedProject][animeImageKey(result,shotNumber)]=payload;
+    await finishGenerationJob(job,'completed',payload);
     renderDeliveryWorkspace('animation',nodes.find(item=>item.id===activeWorkspaceNodeId)); $('workspaceSaveStatus').textContent=`✓ ${shotNumber} frame generated`;
-  }catch(error){button.disabled=false;button.textContent='Generate Frame';$('workspaceSaveStatus').textContent=error.message;}
+  }catch(error){await finishGenerationJob(job,'failed',{error:error.message});button.disabled=false;button.textContent='Generate Frame';$('workspaceSaveStatus').textContent=error.message;}
 }
 
 function exportAnimePackage(fullPackage) {
@@ -819,15 +853,18 @@ async function generateStoryboardFrame(index) {
   if (!result || !scene || !button) return;
   button.disabled = true; button.textContent = 'Generating...';
   $('workspaceSaveStatus').textContent = `● Shot ${index + 1} image generating...`;
+  const job = await startGenerationJob('image', { workspace:'script', shot:index + 1, visual:scene.visual });
   try {
     const response = await fetch('/api/storyboard-image', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ scene, projectContext:buildProjectContext(), scriptContext:{ title:result.script.title, concept:result.script.concept, type:result.scriptType }, aspectRatio:'16:9' }) });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.detail || payload.error || 'Image generation failed.');
     storyboardImages[selectedProject] ||= {};
     storyboardImages[selectedProject][storyboardKey(result,index)] = payload;
+    await finishGenerationJob(job, 'completed', payload);
     renderDeliveryWorkspace('script', nodes.find(item => item.id === activeWorkspaceNodeId));
     $('workspaceSaveStatus').textContent = `✓ Shot ${index + 1} image generated`;
   } catch (error) {
+    await finishGenerationJob(job, 'failed', { error:error.message });
     button.disabled = false; button.textContent = 'Generate Image';
     $('workspaceSaveStatus').textContent = error.message;
   }
@@ -1274,6 +1311,8 @@ async function submitChat(event) {
 }
 
 $('menuButton').onclick = () => app.classList.toggle('sidebar-hidden');
+$('openGenerationMonitor').onclick = openGenerationMonitor;
+$('closeGenerationMonitor').onclick = () => $('generationMonitor').close();
 $('closeInspector').onclick = closeInspector;
 $('workMenuButton').onclick = toggleWorkMenu;
 $('renameWork').onclick = renameSelectedWork;

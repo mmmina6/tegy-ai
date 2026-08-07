@@ -19,5 +19,5 @@ export async function generateStoryboardImage({ prompt, aspectRatio = '16:9' }) 
   const image = parts.find(part => part.inlineData?.data || part.inline_data?.data);
   const inline = image?.inlineData || image?.inline_data;
   if (!inline?.data) throw new Error('Image model returned no image.');
-  return { dataUrl: `data:${inline.mimeType || inline.mime_type || 'image/png'};base64,${inline.data}`, model };
+  return { dataUrl: `data:${inline.mimeType || inline.mime_type || 'image/png'};base64,${inline.data}`, model, usage:payload.usageMetadata || null };
 }

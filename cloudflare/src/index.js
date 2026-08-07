@@ -252,6 +252,47 @@ async function globalSearch(env, url) {
   return json({ results });
 }
 
+async function generationJobs(request, env, url) {
+  if (request.method === "GET") {
+    const organizationId = url.searchParams.get("organization_id") || "tegy";
+    const projectId = url.searchParams.get("project_id");
+    const status = url.searchParams.get("status");
+    let sql = `SELECT * FROM generation_jobs WHERE organization_id=?`;
+    const bindings = [organizationId];
+    if (projectId) { sql += ` AND project_id=?`; bindings.push(projectId); }
+    if (status) { sql += ` AND status=?`; bindings.push(status); }
+    sql += ` ORDER BY created_at DESC LIMIT 100`;
+    const { results = [] } = await env.DB.prepare(sql).bind(...bindings).all();
+    return json({ jobs: results.map(parseJsonFields) });
+  }
+  const body = await bodyJson(request);
+  const missing = required(body, ["organization_id", "media_type", "provider"]);
+  if (missing.length) return json({ error: `Missing: ${missing.join(", ")}` }, 400);
+  const id = crypto.randomUUID();
+  await env.DB.prepare(`INSERT INTO generation_jobs (id, organization_id, project_id, work_id, deliverable_id, media_type, provider, model, status, input_json, usage_units, estimated_cost_usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, body.organization_id, body.project_id || null, body.work_id || null, body.deliverable_id || null, body.media_type, body.provider, body.model || null, body.status || "queued", JSON.stringify(body.input || {}), Number(body.usage_units || 0), body.estimated_cost_usd ?? null).run();
+  return json({ job: parseJsonFields(await env.DB.prepare(`SELECT * FROM generation_jobs WHERE id=?`).bind(id).first()) }, 201);
+}
+
+async function updateGenerationJob(request, env, jobId) {
+  const body = await bodyJson(request) || {};
+  const current = await env.DB.prepare(`SELECT * FROM generation_jobs WHERE id=?`).bind(jobId).first();
+  if (!current) return json({ error: "Generation job not found" }, 404);
+  const status = body.status || current.status;
+  await env.DB.prepare(`UPDATE generation_jobs SET status=?, model=?, output_json=?, usage_units=?, estimated_cost_usd=?, actual_cost_usd=?, error_message=?, started_at=CASE WHEN ?='processing' AND started_at IS NULL THEN datetime('now') ELSE started_at END, completed_at=CASE WHEN ? IN ('completed','failed','cancelled') THEN datetime('now') ELSE completed_at END, updated_at=datetime('now') WHERE id=?`)
+    .bind(status, body.model ?? current.model, JSON.stringify(body.output ?? JSON.parse(current.output_json || "{}")), body.usage_units ?? current.usage_units, body.estimated_cost_usd ?? current.estimated_cost_usd, body.actual_cost_usd ?? current.actual_cost_usd, body.error_message ?? current.error_message, status, status, jobId).run();
+  return json({ job: parseJsonFields(await env.DB.prepare(`SELECT * FROM generation_jobs WHERE id=?`).bind(jobId).first()) });
+}
+
+async function usageSummary(env, url) {
+  const organizationId = url.searchParams.get("organization_id") || "tegy";
+  const projectId = url.searchParams.get("project_id");
+  const clause = projectId ? ` AND project_id=?` : "";
+  const bindings = projectId ? [organizationId, projectId] : [organizationId];
+  const { results = [] } = await env.DB.prepare(`SELECT media_type, provider, model, COUNT(*) AS job_count, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed_count, SUM(usage_units) AS usage_units, SUM(COALESCE(actual_cost_usd, estimated_cost_usd, 0)) AS tracked_cost_usd FROM generation_jobs WHERE organization_id=?${clause} GROUP BY media_type, provider, model ORDER BY media_type, provider`).bind(...bindings).all();
+  return json({ summary: results });
+}
+
 async function route(request, env) {
   const url = new URL(request.url);
   if (request.method === "GET" && url.pathname === "/health") return json({ ok: true, service: "tegy-api", database: "d1" });
@@ -261,6 +302,10 @@ async function route(request, env) {
   if (url.pathname === "/v1/projects" && request.method === "GET") return listProjects(env, url);
   if (url.pathname === "/v1/projects" && request.method === "POST") return createProject(request, env);
   if (url.pathname === "/v1/search" && request.method === "GET") return globalSearch(env, url);
+  if (url.pathname === "/v1/generation-jobs" && ["GET", "POST"].includes(request.method)) return generationJobs(request, env, url);
+  if (url.pathname === "/v1/usage-summary" && request.method === "GET") return usageSummary(env, url);
+  const generationJobMatch = url.pathname.match(/^\/v1\/generation-jobs\/([^/]+)$/);
+  if (generationJobMatch && request.method === "PATCH") return updateGenerationJob(request, env, generationJobMatch[1]);
 
   const projectMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)$/);
   if (projectMatch && request.method === "GET") return getProject(env, projectMatch[1]);

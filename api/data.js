@@ -2,6 +2,9 @@ const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'DELETE']);
 const ALLOWED_PATHS = [
   /^\/v1\/projects$/,
   /^\/v1\/search$/,
+  /^\/v1\/generation-jobs$/,
+  /^\/v1\/generation-jobs\/[a-zA-Z0-9_-]+$/,
+  /^\/v1\/usage-summary$/,
   /^\/v1\/projects\/[a-zA-Z0-9_-]+$/,
   /^\/v1\/projects\/[a-zA-Z0-9_-]+\/works$/,
   /^\/v1\/projects\/[a-zA-Z0-9_-]+\/campaigns$/,

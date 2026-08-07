@@ -43,6 +43,7 @@
         </div>
         <div class="topbar-right">
           <label class="search"><span>⌕</span><input id="globalSearch" autocomplete="off" placeholder="Search projects, work, deliverables..." /><kbd>⌘K</kbd><div class="search-results hidden" id="searchResults"></div></label>
+          <button class="icon-button" id="openGenerationMonitor" title="Generation queue & usage">◷</button>
           <button class="icon-button">♧<span class="notification-dot"></span></button>
           <button class="gradient-plus" id="quickAdd" aria-label="Add Work to current Project" title="Add Work to current Project">＋<span class="plus-tooltip">Add Work</span></button>
         </div>
@@ -120,6 +121,11 @@
       <div class="inspector-body hidden" id="promptPanel"><div class="empty-output">Prompt は3つの Skill 内で管理されています。チャットには普段の言葉で入力してください。</div></div>
     </aside>
   </div>
+  <dialog class="generation-monitor" id="generationMonitor">
+    <header><div><small>PRODUCTION CONTROL</small><h2>Generation Queue & Usage</h2><p>Image / Video生成の進行状況と利用量をProject単位で確認します。</p></div><button id="closeGenerationMonitor">×</button></header>
+    <div class="generation-summary" id="generationSummary"></div>
+    <div class="generation-job-list" id="generationJobList"></div>
+  </dialog>
   <dialog class="google-login-dialog" id="googleLoginDialog">
     <button class="google-dialog-close" id="closeGoogleDialog">×</button>
     <img src="./tegy-logo-horizontal.png" alt="TEGY" />
