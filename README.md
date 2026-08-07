@@ -55,3 +55,5 @@ TEGY stores structured project data in the Cloudflare D1 database `tegy-producti
 - Configuration: `cloudflare/wrangler.toml`
 
 The Worker requires a `TEGY_API_TOKEN` secret on every `/v1/*` route. `/health` remains public for deployment monitoring. This service token is an interim server-to-server boundary and will be replaced by verified Google Workspace sessions when login is implemented.
+
+Vercel exposes the allow-listed `/api/data` proxy to the browser. Configure `TEGY_API_URL` and the same `TEGY_API_TOKEN` in Vercel; never add the token to browser JavaScript.
