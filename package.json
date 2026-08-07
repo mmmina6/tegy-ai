@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vercel dev",
-    "test": "node --test"
+    "test": "node --test",
+    "d1:migrate:local": "npx wrangler d1 migrations apply tegy-production --local --config cloudflare/wrangler.toml",
+    "d1:migrate:remote": "npx wrangler d1 migrations apply tegy-production --remote --config cloudflare/wrangler.toml",
+    "worker:dev": "npx wrangler dev --config cloudflare/wrangler.toml",
+    "worker:deploy": "npx wrangler deploy --config cloudflare/wrangler.toml"
   },
   "devDependencies": {
     "vercel": "^48.0.0"
