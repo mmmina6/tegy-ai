@@ -45,3 +45,13 @@ app.js                                Existing UI integration
 ## Verification
 
 Run `npm test`. A live Gemini generation additionally requires a valid key and consumes API quota.
+
+## Cloudflare D1 API
+
+TEGY stores structured project data in the Cloudflare D1 database `tegy-production`. Generated files remain in the company Google Shared Drive; the `drive_files` table stores only their IDs, links, and project relationships.
+
+- Schema: `cloudflare/migrations/0001_initial.sql`
+- Worker: `cloudflare/src/index.js`
+- Configuration: `cloudflare/wrangler.toml`
+
+The Worker requires a `TEGY_API_TOKEN` secret on every `/v1/*` route. `/health` remains public for deployment monitoring. This service token is an interim server-to-server boundary and will be replaced by verified Google Workspace sessions when login is implemented.

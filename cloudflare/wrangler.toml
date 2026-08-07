@@ -1,0 +1,13 @@
+name = "tegy-api"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "tegy-production"
+database_id = "1e8d67e0-f933-49b9-a381-ddb34abcfbe9"
+migrations_dir = "migrations"
+
+[vars]
+ALLOWED_ORIGIN = "https://tegy-ai.vercel.app"
+
