@@ -1,3 +1,5 @@
+import { STORYBOARD_IMAGE_PRICE_USD_1K, eligibleStoryboardIndexes, estimatedStoryboardCost, nextAssetReviewStatus } from './src/agents/script/storyboard-workflow.js';
+
 const projects = [
   { id: 'azabu', name: '日本インプラント', sub: 'Japan Implant', mark: '日' },
   { id: 'imai', name: '明治安田生命', sub: 'Meijiyasuda Seimei', mark: '明' },
@@ -111,7 +113,9 @@ let selectedNode = null;
 let generating = false;
 const outputs = loadOutputs();
 const storyboardImages = {};
+const storyboardPlans = loadStoryboardPlans();
 const generatedVideos = {};
+const approvedScriptDeliverables = new Set();
 const projectWorks = loadProjectWorks();
 const researchOutputs = loadResearchOutputs();
 const shadowOutputs = loadShadowOutputs();
@@ -250,6 +254,15 @@ function loadOutputs() {
 
 function saveOutputs() {
   localStorage.setItem('tegy-script-outputs', JSON.stringify(outputs));
+}
+
+function loadStoryboardPlans() {
+  try { return JSON.parse(localStorage.getItem('tegy-storyboard-plans-v1') || '{}'); }
+  catch { return {}; }
+}
+
+function saveStoryboardPlans() {
+  localStorage.setItem('tegy-storyboard-plans-v1', JSON.stringify(storyboardPlans));
 }
 
 function loadProjectWorks() {
@@ -541,6 +554,7 @@ function renderDeliveryWorkspace(key, node) {
     if (save) save.onclick = saveScriptWorkspaceEdits;
     document.querySelectorAll('[data-generate-storyboard]').forEach(button => { button.onclick = () => generateStoryboardFrame(Number(button.dataset.generateStoryboard)); });
     document.querySelectorAll('[data-download-storyboard]').forEach(button => { button.onclick = () => downloadStoryboardFrame(Number(button.dataset.downloadStoryboard)); });
+    wireStoryboardPlanningControls();
     document.querySelectorAll('[data-export-index]').forEach(button => { button.onclick = () => exportScriptPackage(Number(button.dataset.exportIndex)); });
     document.querySelectorAll('.delivery-nav nav button').forEach((button,index) => { button.onclick = () => showScriptSection(index); });
   }
@@ -909,6 +923,8 @@ async function loadScriptVersionPanel() {
   }
   try {
     const payload = await dataRequest(`/v1/deliverables/${node.deliverableId}`);
+    if (payload.deliverable.status === 'approved') approvedScriptDeliverables.add(node.deliverableId);
+    else approvedScriptDeliverables.delete(node.deliverableId);
     const pending = payload.approvals.find(item => item.status === 'pending');
     const latestDecision = payload.approvals.find(item => item.status !== 'pending');
     const status = pending ? 'Review pending' : payload.deliverable.status === 'approved' ? 'Approved' : latestDecision?.status === 'changes_requested' ? 'Changes requested' : 'Draft';
@@ -947,15 +963,73 @@ function storyboardKey(result, index) {
 
 function visualStoryboardMarkup(result) {
   const images = storyboardImages[selectedProject] || {};
-  return `<section class="visual-storyboard"><header><div><small>06 · VISUAL STORYBOARD / 絵コンテ</small><h2>Shot Images</h2><p>字コンテを確認してから、必要なShotだけを生成してください。</p></div></header><div class="storyboard-card-grid">${(result.script.scenes || []).map((scene,index)=>{ const image = images[storyboardKey(result,index)]; return `<article><div class="storyboard-frame">${image ? `<img src="${image.dataUrl}" alt="Storyboard Shot ${index+1}">` : `<span>SHOT ${String(index+1).padStart(2,'0')}</span>`}</div><div><small>${escapeHtml(scene.seconds)}</small><b>${escapeHtml(scene.visual)}</b><p>${escapeHtml(scene.camera || scene.shotType || '')}</p><button data-generate-storyboard="${index}">${image ? 'Regenerate' : 'Generate Image'}</button>${image ? `<button class="secondary" data-download-storyboard="${index}">Download PNG</button>` : ''}</div></article>`; }).join('')}</div></section>`;
+  const scenes = result.script.scenes || [];
+  const plans = storyboardPlans[selectedProject] ||= {};
+  return `<section class="visual-storyboard"><header class="storyboard-production-head"><div><small>06 · VISUAL STORYBOARD / 絵コンテ</small><h2>Shot Asset Planning</h2><p>各Shotの素材来源を選択し、生成対象だけを承認してから制作します。</p></div><div class="storyboard-batch-actions"><span id="storyboardCostPreview">0 images · $0.00 estimated</span><button data-generate-selected>Generate Selected</button><button class="secondary" data-generate-approved>Generate All Approved</button></div></header><div class="storyboard-card-grid">${scenes.map((scene,index)=>{ const key=storyboardKey(result,index); const image=images[key]; const plan=plans[key] || {source:'ai',selected:false,planApproved:false,assetStatus:image?'review':'draft',prompt:scene.visual}; plans[key]=plan; return `<article data-storyboard-card="${index}" class="asset-${escapeHtml(plan.assetStatus)}"><div class="storyboard-frame">${image ? `<img src="${image.dataUrl}" alt="Storyboard Shot ${index+1}">` : plan.source==='none' ? '<span>NO IMAGE REQUIRED</span>' : `<span>SHOT ${String(index+1).padStart(2,'0')}</span>`}</div><div class="storyboard-shot-meta"><label class="storyboard-select"><input type="checkbox" data-storyboard-select="${index}" ${plan.selected?'checked':''}> Select</label><small>${escapeHtml(scene.seconds)} · ${escapeHtml(plan.assetStatus.toUpperCase())}</small><b>${escapeHtml(scene.visual)}</b><p>${escapeHtml(scene.camera || scene.shotType || '')}</p><label>Asset Source<select data-storyboard-source="${index}"><option value="ai" ${plan.source==='ai'?'selected':''}>Generate with AI</option><option value="upload" ${plan.source==='upload'?'selected':''}>Upload / Import Asset</option><option value="none" ${plan.source==='none'?'selected':''}>No Image Required</option></select></label><label class="storyboard-prompt ${plan.source==='ai'?'':'hidden'}">Image Prompt<textarea data-storyboard-prompt="${index}">${escapeHtml(plan.prompt || scene.visual)}</textarea></label><div class="storyboard-card-actions"><button class="secondary" data-approve-shot="${index}">${plan.planApproved?'✓ Shot Approved':'Approve Shot'}</button>${plan.source==='ai'?`<button data-generate-storyboard="${index}" ${plan.planApproved?'':'disabled'}>${image?'Regenerate':'Generate Image'}</button>`:''}${plan.source==='upload'?`<button data-import-storyboard="${index}">Import Asset</button><input class="hidden" type="file" accept="image/*" data-storyboard-file="${index}">`:''}${image?`<button class="secondary" data-review-storyboard="${index}">${plan.assetStatus==='approved'?'✓ Image Approved':plan.assetStatus==='review'?'Approve Image':'Submit Review'}</button><button class="secondary" data-download-storyboard="${index}">Download</button>`:''}</div></div></article>`; }).join('')}</div></section>`;
 }
 
-async function generateStoryboardFrame(index) {
+function storyboardPlan(result,index) {
+  const key = storyboardKey(result,index);
+  storyboardPlans[selectedProject] ||= {};
+  return storyboardPlans[selectedProject][key] ||= { source:'ai', selected:false, planApproved:false, assetStatus:'draft', prompt:result.script.scenes[index]?.visual || '' };
+}
+
+function storyboardEstimate(count) { return estimatedStoryboardCost(count); }
+
+function updateStoryboardCostPreview() {
   const result = outputs[selectedProject]?.at(-1);
-  const scene = result?.script?.scenes?.[index];
+  if (!result || !$('storyboardCostPreview')) return;
+  const count = (result.script.scenes || []).filter((_,index) => { const plan=storyboardPlan(result,index); return plan.selected && plan.source==='ai' && plan.planApproved; }).length;
+  $('storyboardCostPreview').textContent = `${count} image${count===1?'':'s'} · $${storyboardEstimate(count).toFixed(3)} estimated`;
+}
+
+function wireStoryboardPlanningControls() {
+  const result = outputs[selectedProject]?.at(-1);
+  if (!result) return;
+  document.querySelectorAll('[data-storyboard-select]').forEach(input => input.onchange = () => { storyboardPlan(result,Number(input.dataset.storyboardSelect)).selected=input.checked; saveStoryboardPlans(); updateStoryboardCostPreview(); });
+  document.querySelectorAll('[data-storyboard-source]').forEach(select => select.onchange = () => { const plan=storyboardPlan(result,Number(select.dataset.storyboardSource)); plan.source=select.value; if(select.value==='none'){plan.planApproved=true;plan.assetStatus='approved';} saveStoryboardPlans(); renderDeliveryWorkspace('script',nodes.find(item=>item.id===activeWorkspaceNodeId)); });
+  document.querySelectorAll('[data-storyboard-prompt]').forEach(input => input.oninput = () => { storyboardPlan(result,Number(input.dataset.storyboardPrompt)).prompt=input.value; saveStoryboardPlans(); });
+  document.querySelectorAll('[data-approve-shot]').forEach(button => button.onclick = () => { const plan=storyboardPlan(result,Number(button.dataset.approveShot)); plan.planApproved=!plan.planApproved; saveStoryboardPlans(); renderDeliveryWorkspace('script',nodes.find(item=>item.id===activeWorkspaceNodeId)); });
+  document.querySelectorAll('[data-import-storyboard]').forEach(button => button.onclick = () => document.querySelector(`[data-storyboard-file="${button.dataset.importStoryboard}"]`)?.click());
+  document.querySelectorAll('[data-storyboard-file]').forEach(input => input.onchange = () => importStoryboardAsset(Number(input.dataset.storyboardFile),input.files?.[0]));
+  document.querySelectorAll('[data-review-storyboard]').forEach(button => button.onclick = () => { const plan=storyboardPlan(result,Number(button.dataset.reviewStoryboard)); plan.assetStatus=nextAssetReviewStatus(plan.assetStatus); saveStoryboardPlans(); renderDeliveryWorkspace('script',nodes.find(item=>item.id===activeWorkspaceNodeId)); });
+  document.querySelector('[data-generate-selected]')?.addEventListener('click',() => generateStoryboardBatch(false));
+  document.querySelector('[data-generate-approved]')?.addEventListener('click',() => generateStoryboardBatch(true));
+  updateStoryboardCostPreview();
+}
+
+function importStoryboardAsset(index,file) {
+  const result = outputs[selectedProject]?.at(-1);
+  if (!result || !file || !file.type.startsWith('image/')) return;
+  if (file.size > 15 * 1024 * 1024) { $('workspaceSaveStatus').textContent='Asset must be under 15 MB.'; return; }
+  const reader = new FileReader();
+  reader.onload = () => { storyboardImages[selectedProject] ||= {}; storyboardImages[selectedProject][storyboardKey(result,index)]={dataUrl:reader.result,model:'imported-asset',fileName:file.name}; const plan=storyboardPlan(result,index); plan.source='upload'; plan.assetStatus='review'; plan.planApproved=true; saveStoryboardPlans(); renderDeliveryWorkspace('script',nodes.find(item=>item.id===activeWorkspaceNodeId)); $('workspaceSaveStatus').textContent='✓ Asset imported · Waiting for image approval'; };
+  reader.readAsDataURL(file);
+}
+
+async function generateStoryboardBatch(allApproved) {
+  const result = outputs[selectedProject]?.at(-1);
+  if (!result) return;
+  const node = nodes.find(item=>item.id===activeWorkspaceNodeId);
+  if (node?.remote && node.deliverableId && !approvedScriptDeliverables.has(node.deliverableId)) { $('workspaceSaveStatus').textContent='Script approval is required before batch image generation.'; return; }
+  const indexes=eligibleStoryboardIndexes((result.script.scenes||[]).map((_,index)=>storyboardPlan(result,index)),{allApproved});
+  if (!indexes.length) { $('workspaceSaveStatus').textContent='Approve and select at least one AI Shot.'; return; }
+  if (!confirm(`${indexes.length} images will be generated. Estimated image output cost: $${storyboardEstimate(indexes.length).toFixed(3)}. Continue?`)) return;
+  for (const index of indexes) await generateStoryboardFrame(index,{skipRender:true});
+  renderDeliveryWorkspace('script',nodes.find(item=>item.id===activeWorkspaceNodeId));
+  $('workspaceSaveStatus').textContent=`✓ ${indexes.length} storyboard assets generated`;
+}
+
+async function generateStoryboardFrame(index, options = {}) {
+  const result = outputs[selectedProject]?.at(-1);
+  const originalScene = result?.script?.scenes?.[index];
+  const plan = result ? storyboardPlan(result,index) : null;
+  const scene = originalScene ? { ...originalScene, visual:plan?.prompt || originalScene.visual } : null;
   const button = document.querySelector(`[data-generate-storyboard="${index}"]`);
-  if (!result || !scene || !button) return;
-  button.disabled = true; button.textContent = 'Generating...';
+  if (!result || !scene || !plan?.planApproved || plan.source !== 'ai') return;
+  const node = nodes.find(item=>item.id===activeWorkspaceNodeId);
+  if (node?.remote && node.deliverableId && !approvedScriptDeliverables.has(node.deliverableId)) { $('workspaceSaveStatus').textContent='Script approval is required before image generation.'; return; }
+  if (button) { button.disabled = true; button.textContent = 'Generating...'; }
   $('workspaceSaveStatus').textContent = `● Shot ${index + 1} image generating...`;
   const job = await startGenerationJob('image', { workspace:'script', shot:index + 1, visual:scene.visual });
   try {
@@ -964,12 +1038,14 @@ async function generateStoryboardFrame(index) {
     if (!response.ok) throw new Error(payload.detail || payload.error || 'Image generation failed.');
     storyboardImages[selectedProject] ||= {};
     storyboardImages[selectedProject][storyboardKey(result,index)] = payload;
-    await finishGenerationJob(job, 'completed', payload);
-    renderDeliveryWorkspace('script', nodes.find(item => item.id === activeWorkspaceNodeId));
+    plan.assetStatus = 'review'; plan.selected = false; saveStoryboardPlans();
+    await finishGenerationJob(job, 'completed', { ...payload, usageUnits:1, estimatedCostUsd:STORYBOARD_IMAGE_PRICE_USD_1K });
+    if (!options.skipRender) renderDeliveryWorkspace('script', nodes.find(item => item.id === activeWorkspaceNodeId));
     $('workspaceSaveStatus').textContent = `✓ Shot ${index + 1} image generated`;
   } catch (error) {
     await finishGenerationJob(job, 'failed', { error:error.message });
-    button.disabled = false; button.textContent = 'Generate Image';
+    plan.assetStatus = 'failed'; saveStoryboardPlans();
+    if (button) { button.disabled = false; button.textContent = 'Generate Image'; }
     $('workspaceSaveStatus').textContent = error.message;
   }
 }
