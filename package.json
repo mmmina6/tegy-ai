@@ -13,5 +13,8 @@
   },
   "devDependencies": {
     "vercel": "^48.0.0"
+  },
+  "dependencies": {
+    "@huggingface/inference": "^4.13.25"
   }
 }

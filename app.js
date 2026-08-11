@@ -851,7 +851,7 @@ async function generateAnimeStoryboardFrame(shotNumber) {
   button.disabled=true; button.textContent='Generating...';
   const job=await startGenerationJob('image',{workspace:'anime',shotNumber,visual:shot.imagePrompt});
   try{
-    const response=await fetch('/api/storyboard-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene:{visual:shot.imagePrompt,characterAction:shot.characterAction,camera:shot.camera,location:shot.location},projectContext:buildProjectContext(),scriptContext:{title:result.treatment.title,concept:result.treatment.visualApproach,characters:result.treatment.characters,productionRules:result.treatment.productionRules},aspectRatio:result.treatment.aspectRatio})});
+    const response=await fetch('/api/anime-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene:{visual:shot.imagePrompt,characterAction:shot.characterAction,camera:shot.camera,location:shot.location},projectContext:buildProjectContext(),animeContext:{title:result.treatment.title,concept:result.treatment.visualApproach,characters:result.treatment.characters,productionRules:result.treatment.productionRules},aspectRatio:result.treatment.aspectRatio})});
     const payload=await response.json(); if(!response.ok)throw new Error(payload.detail||payload.error||'Frame generation failed.');
     storyboardImages[selectedProject]||={}; storyboardImages[selectedProject][animeImageKey(result,shotNumber)]=payload;
     await finishGenerationJob(job,'completed',payload);
