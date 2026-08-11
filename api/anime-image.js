@@ -11,6 +11,7 @@ export default async function handler(request, response) {
   } catch (error) {
     console.error('Hugging Face Anime image failed:', error);
     const configurationError = error.message.includes('HF_TOKEN');
-    return response.status(configurationError ? 503 : 502).json({ error:configurationError ? 'Hugging Face trial is not configured.' : 'Anime image generation failed.', detail:process.env.NODE_ENV === 'development' ? error.message : undefined });
+    const safeDetail = String(error.message || 'Unknown provider error').replace(/hf_[A-Za-z0-9]+/g, '[REDACTED]').slice(0, 300);
+    return response.status(configurationError ? 503 : 502).json({ error:configurationError ? 'Hugging Face trial is not configured.' : 'Anime image generation failed.', providerDetail:safeDetail });
   }
 }
