@@ -538,6 +538,7 @@ function renderDeliveryWorkspace(key, node) {
   };
   const d = definitions[key] || definitions.manager;
   $('genericWorkspace').innerHTML = `<div class="delivery-workspace ${key}-delivery"><aside class="delivery-nav"><div class="delivery-nav-title"><span class="node-icon ${node.cls}">${node.icon}</span><div><b>${escapeHtml(node.name)}</b><small>Project Work</small></div></div><nav>${d.nav.map((item,index)=>`<button class="${index===1?'active':''}"><span>${String(index+1).padStart(2,'0')}</span>${escapeHtml(item)}</button>`).join('')}</nav><button class="delivery-add">＋ Add item</button></aside><main class="delivery-main"><header><div><small>${d.kicker}</small><h1>${d.title}</h1><p>${d.copy}</p></div><button>•••</button></header>${deliveryCenterMarkup(d.center)}</main><aside class="delivery-rail"><section><small>AI INSIGHT</small><h3>Recommended direction</h3><p>${d.insight}</p></section><section><small>HISTORY</small><ul><li><b>10:25</b> Workspace updated</li><li><b>10:10</b> Project context synced</li><li><b>Yesterday</b> Client requirement added</li></ul></section><section><small>EXPORT & DELIVERY</small>${d.exports.map((item,index)=>`<button data-export-index="${index}">${escapeHtml(item)} <span>→</span></button>`).join('')}</section></aside></div>`;
+  if (key === 'script') $('genericWorkspace').innerHTML = $('genericWorkspace').innerHTML.replaceAll('素材来源','素材ソース');
   if (key !== 'script') prepareAgentSections(key, d.nav);
   if (key === 'shadow') {
     const form = $('shadowAuditForm');
