@@ -1,10 +1,12 @@
 import { STORYBOARD_IMAGE_PRICE_USD_1K, eligibleStoryboardIndexes, estimatedStoryboardCost, nextAssetReviewStatus } from './src/agents/script/storyboard-workflow.js';
+import { parakoProject, parakoProjectDetails, parakoWorks, parakoShadowResult } from './src/fixtures/parako-shadow-test.js';
 
 const projects = [
   { id: 'azabu', name: '日本インプラント', sub: 'Japan Implant', mark: '日' },
   { id: 'imai', name: '明治安田生命', sub: 'Meijiyasuda Seimei', mark: '明' },
   { id: 'tegy', name: 'TEGY', sub: 'Internal Project', mark: 'T' },
   { id: 'kao-the-core', name: '花王 THE CORE', sub: 'Kao Life Care Lab', mark: '花' },
+  parakoProject,
   { id: 'demo', name: 'Demo Project', sub: 'Test & Explore', mark: 'D' }
 ];
 
@@ -21,6 +23,7 @@ const projectDetails = {
     source:'https://www.kao-kirei.com/ja/officialh/kaolifecarelab/thecore/',
     defaultNode:'pm'
   },
+  'parako-shadow-test': parakoProjectDetails,
   demo: { owner:'Mina Rho', deadline:'2026/08/15', requirement:'商品の価値を生活シーンで伝える短尺広告' }
 };
 
@@ -33,6 +36,7 @@ const baseNodes = [
 ];
 
 const sampleProjectWorks = {
+  'parako-shadow-test': parakoWorks,
   'kao-the-core': [
     { id:'pm', name:'AI Project Manager', icon:'✦', cls:'pm', x:38, y:5, status:'In Progress', type:'progress', detail:'Script承認後、StoryboardとVideo制作へ進行', progress:58 },
     { id:'research', name:'Research Agent', icon:'◎', cls:'mint-bg', x:10, y:38, status:'Completed', type:'done', detail:'商品根拠とCampaign Insightを共有済み', progress:100 },
@@ -286,8 +290,9 @@ function saveResearchOutputs() {
 }
 
 function loadShadowOutputs() {
-  try { return JSON.parse(localStorage.getItem('tegy-shadow-outputs-v2-ja') || '{}'); }
-  catch { return {}; }
+  const samples = { 'parako-shadow-test':[structuredClone(parakoShadowResult)] };
+  try { return { ...samples, ...JSON.parse(localStorage.getItem('tegy-shadow-outputs-v2-ja') || '{}') }; }
+  catch { return samples; }
 }
 
 function saveShadowOutputs() {
@@ -543,6 +548,18 @@ function renderDeliveryWorkspace(key, node) {
   if (key === 'shadow') {
     const form = $('shadowAuditForm');
     if (form) form.onsubmit = event => { event.preventDefault(); runShadowAudit(); };
+    if (selectedProject === 'parako-shadow-test' && form) {
+      form.elements.channelUrl.value = parakoProjectDetails.source;
+      ['baselineImpressions','recentImpressions','recommendationTrafficPercent','searchTrafficPercent','clickThroughRate','averageRetentionPercent','stayToWatchPercent'].forEach(name => {
+        form.elements[name].value = '';
+        form.elements[name].placeholder = 'Needs YouTube Studio';
+      });
+      form.elements.policyWarnings.value = '';
+      form.elements.policyWarnings.placeholder = 'Needs Channel Admin';
+    }
+    const result = shadowOutputs[selectedProject]?.at(-1);
+    const resultRoot = document.querySelector('.audit-result');
+    if (resultRoot && result) resultRoot.insertAdjacentHTML('afterbegin', shadowEvidenceMarkup(result));
   }
   if (key === 'script') {
     const latestScriptResult = outputs[selectedProject]?.at(-1);
@@ -1165,6 +1182,14 @@ function shadowResultMarkup(result) {
   if (!auditItems.length) auditItems.push({ status:'needs-data', area:'Content / Operation Audit', evidence:'監査に必要な情報が不足しています。', recommendation:'直近50本のContent inventoryとAnalyticsを追加してください。' });
   if (!audit.seoGaps?.length) audit.seoGaps = ['Title、Description、Keywords、YouTube Search queriesを追加してください。'];
   return `<section class="audit-result"><div class="health-score"><div style="--score:${score * 3.6}deg"><strong>${score}</strong><span>/ 100</span></div><section><small>CHANNEL HEALTH</small><h3>${escapeHtml(diagnosis.riskLevel || 'Needs review')}</h3><p>${escapeHtml(diagnosis.diagnosis || '')}</p><span class="confidence">Confidence · ${escapeHtml(diagnosis.confidence || 'Limited')}</span></section></div><div class="shadow-ban-verdict ${diagnosis.confirmedRestriction ? 'confirmed' : ''}"><b>${diagnosis.confirmedRestriction ? 'Explicit restriction evidence found' : 'No confirmed Shadow Ban'}</b><p>${escapeHtml(diagnosis.disclaimer || 'Performance changes alone cannot confirm a platform restriction.')}</p></div><div class="signal-grid">${signals.map(signal => `<article><span class="${signal.status === 'healthy' ? 'good' : signal.status === 'critical' ? 'critical' : 'warn'}">● ${escapeHtml(signal.status)}</span><h3>${escapeHtml(signal.label)}</h3><b>${escapeHtml(signal.value)}${escapeHtml(signal.unit)}</b></article>`).join('')}</div><section class="audit-findings"><small>CONTENT / OPERATION AUDIT</small><div>${auditItems.map(item => `<article><span>${escapeHtml(item.status)}</span><b>${escapeHtml(item.area)}</b><p>${escapeHtml(item.evidence)}</p><em>${escapeHtml(item.recommendation)}</em></article>`).join('') || '<p>需要更多资料完成内容审计。</p>'}</div></section><section class="seo-findings"><small>SEO CHECK</small><ul>${(audit.seoGaps || []).map(item => `<li>${escapeHtml(item)}</li>`).join('') || '<li>请提供标题、说明、关键词与搜索查询数据。</li>'}</ul></section><section class="cause-section"><small>POSSIBLE CAUSES</small>${causes.map(cause => `<article><div><b>${escapeHtml(cause.cause)}</b><span>${escapeHtml(cause.likelihood)}</span></div><p>${escapeHtml(cause.evidence)}</p><em>Alternative: ${escapeHtml(cause.alternativeExplanation)}</em></article>`).join('')}</section><table class="action-table"><thead><tr><th>Priority</th><th>Recommended action</th><th>Reason</th><th>Success metric</th></tr></thead><tbody>${actions.map(action => `<tr><td>${escapeHtml(action.priority)}</td><td>${escapeHtml(action.action)}<small>${escapeHtml(action.owner)}</small></td><td>${escapeHtml(action.reason)}</td><td>${escapeHtml(action.successMetric)}</td></tr>`).join('')}</tbody></table><section class="recovery-roadmap"><small>90-DAY RECOVERY ROADMAP</small><div>${recoveryPlan.map(phase => `<article><span>${escapeHtml(phase.period)}</span><h3>${escapeHtml(phase.phase)}</h3><p>${escapeHtml(phase.objective)}</p><ul>${(phase.tasks || []).map(task => `<li>${escapeHtml(task)}</li>`).join('')}</ul><b>Exit · ${(phase.exitCriteria || []).map(escapeHtml).join(' / ')}</b></article>`).join('')}</div></section><section class="verification-plan"><div><small>VERIFICATION STEPS</small><ul>${(diagnosis.verificationSteps || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div><div><small>MONITORING METRICS</small><ul>${(diagnosis.monitoringMetrics || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div></section></section>`;
+}
+
+function shadowEvidenceMarkup(result) {
+  const snapshot = result.publicSnapshot || [];
+  const coverage = result.dataCoverage || {};
+  const sources = result.evidenceSources || [];
+  if (!snapshot.length && !sources.length) return '';
+  return `<section class="shadow-evidence"><div class="shadow-evidence-head"><div><small>PUBLIC DATA TEST</small><h2>@parako Channel Evidence</h2><p>公開データとYouTube Studio専用データを分けて表示しています。外部snapshotは取得日が異なるため、Studioを正本として照合します。</p></div><span>Updated · 2026/08/11</span></div><table class="action-table shadow-snapshot-table"><thead><tr><th>Metric</th><th>Public value</th><th>Change / period</th><th>Source</th></tr></thead><tbody>${snapshot.map(item => `<tr><td>${escapeHtml(item.metric)}</td><td><b>${escapeHtml(item.value)}</b></td><td>${escapeHtml(item.change)}</td><td>${escapeHtml(item.source)}</td></tr>`).join('')}</tbody></table><div class="verification-plan shadow-data-coverage"><div><small>PUBLIC DATA AVAILABLE</small><ul>${(coverage.publicAvailable || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div><div><small>YOUTUBE STUDIO REQUIRED</small><ul>${(coverage.studioRequired || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div></div><section class="shadow-evidence-sources"><small>EVIDENCE SOURCES</small><div>${sources.map(source => `<a href="${escapeHtml(source.url)}" target="_blank" rel="noopener"><b>${escapeHtml(source.title)}</b><span>${escapeHtml(source.note)}</span><i>Open ↗</i></a>`).join('')}</div></section></section>`;
 }
 
 function closeFullWorkspace() {
