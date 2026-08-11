@@ -13,10 +13,11 @@ test('Anime Script Agent creates a treatment before the text storyboard', async 
   let call = 0;
   globalThis.fetch = async () => ({ ok:true, json:async () => ({ candidates:[{content:{parts:[{text:JSON.stringify(outputs[call++])}]}}] }) });
   try {
-    const result = await runAnimeScriptAgent({ projectContext:{id:'demo'}, animeBrief:{mode:'auto',durationSeconds:15} });
+    const result = await runAnimeScriptAgent({ projectContext:{id:'demo'}, animeBrief:{mode:'auto',durationSeconds:15,productionMode:'quick',style:'Cinematic 3D animation',preferredVideoModel:'Seedance'} });
     assert.equal(call, 2);
     assert.equal(result.projectId, 'demo');
     assert.equal(result.treatment.title, 'Morning');
+    assert.equal(result.animeBrief.preferredVideoModel, 'Seedance');
     assert.equal(result.textStoryboard.scenes[0].shots[0].shotNumber, '01-01');
   } finally {
     globalThis.fetch = originalFetch;
