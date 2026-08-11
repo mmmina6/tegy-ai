@@ -94,8 +94,8 @@
       <section class="chat-panel" id="chatPanel">
         <div class="chat-orb"><span></span><span></span></div>
         <div class="chat-copy"><strong id="chatTitle">こんにちは、Minaさん </strong><p id="chatSubtitle">今日は何を創りましょうか？</p></div>
-        <div class="suggestions"><button>⚡ 次のステップを提案</button><button>▥ 競合を分析する</button><button>✎ アイデアを広げる</button></div>
-        <form id="chatForm"><input id="chatInput" autocomplete="off" placeholder="商品、ターゲット、媒体、秒数を自分の言葉で入力してください..." /><button id="chatSubmit" type="submit" aria-label="送信">↑</button></form>
+        <div class="suggestions"><button data-chat-prompt="このProjectで次に進める仕事を一緒に整理して">⚡ 次の仕事を相談</button><button data-chat-prompt="このProjectの市場と競合を調査して">◎ 市場・競合を調べる</button><button data-chat-prompt="30秒の縦型Animeを作りたい">▷ Animeを作る</button></div>
+        <form id="chatForm"><input id="chatInput" autocomplete="off" placeholder="作りたいものを話すか、入力してください..." /><button id="voiceInput" class="voice-input" type="button" aria-label="音声入力">⌁</button><button id="chatSubmit" type="submit" aria-label="送信">↑</button></form>
         <div class="chat-status hidden" id="chatStatus" role="status"></div>
       </section>
     </main>

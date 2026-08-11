@@ -1,5 +1,6 @@
 import { STORYBOARD_IMAGE_PRICE_USD_1K, eligibleStoryboardIndexes, estimatedStoryboardCost, nextAssetReviewStatus } from './src/agents/script/storyboard-workflow.js';
 import { parakoProject, parakoProjectDetails, parakoWorks, parakoShadowResult } from './src/fixtures/parako-shadow-test.js';
+import { detectCoworkerIntent, workNameForIntent, coworkerConfirmation } from './src/coworker/intent-router.js';
 
 const projects = [
   { id: 'azabu', name: '日本インプラント', sub: 'Japan Implant', mark: '日' },
@@ -128,6 +129,7 @@ const operationInsights = {};
 let activeWorkspaceNodeId = null;
 let activeScriptExportSection = 3;
 let searchRequestSequence = 0;
+let pendingAnimePrompt = '';
 
 const $ = id => document.getElementById(id);
 const app = $('app');
@@ -378,8 +380,8 @@ async function openProject(id) {
   renderProjects();
   const details = projectDetails[id] || {};
   $('breadcrumbs').innerHTML = `<strong>${project.name}</strong><span class="active-project-pill">● Active Project</span><span class="project-subline">› ${escapeHtml(details.campaign || 'YouTube Organic 広告制作プロジェクト')}　✎</span>`;
-  $('chatTitle').textContent = 'AI Script Agent';
-  $('chatSubtitle').textContent = '商品の情報を普段の言葉で教えてください。';
+  $('chatTitle').textContent = 'TEGY AI Coworker';
+  $('chatSubtitle').textContent = 'やりたい仕事を話してください。適切なWorkと次のActionを一緒に整理します。';
   renderNodes();
   renderHistory();
   if (latest) renderOutput(latest);
@@ -579,6 +581,10 @@ function renderDeliveryWorkspace(key, node) {
   if (key === 'animation') {
     const form = $('animeWorkspaceForm');
     if (form) form.onsubmit = event => { event.preventDefault(); runAnimeWorkspace(); };
+    const promptInput = form?.querySelector('[name="requirement"]');
+    if (promptInput) promptInput.oninput = () => syncAnimePromptInference(form);
+    const voiceButton = document.querySelector('[data-anime-voice]');
+    if (voiceButton) voiceButton.onclick = () => startVoiceInput(form.querySelector('[name="requirement"]'));
     document.querySelectorAll('[data-anime-shot]').forEach(button => { button.onclick = () => generateAnimeStoryboardFrame(button.dataset.animeShot); });
     wireAnimeVideoQueue();
     document.querySelectorAll('[data-export-index]').forEach(button => { button.onclick = () => exportAnimePackage(Number(button.dataset.exportIndex)); });
@@ -716,18 +722,79 @@ async function openGenerationMonitor() {
   }
 }
 
+function inferAnimeBrief(prompt = '') {
+  const text = prompt.toLowerCase();
+  const seconds = Number(prompt.match(/(\d+)\s*(?:秒|sec|seconds?)/i)?.[1] || 30);
+  const aspectRatio = /横|landscape|16\s*:\s*9/.test(text) ? '16:9' : /正方形|square|1\s*:\s*1/.test(text) ? '1:1' : '9:16';
+  let style = 'Modern Japanese 2D anime';
+  let styleLabel = '2D Anime';
+  if (/線画|line\s*(?:art|manga)|漫画|comic/.test(text)) { style = 'Motion comic with bold ink lines'; styleLabel = 'Japanese Line Manga'; }
+  else if (/3d|立体|cinematic/.test(text)) { style = 'Cinematic 3D animation'; styleLabel = 'Cinematic 3D'; }
+  else if (/ちび|chibi|sd/.test(text)) { style = 'Chibi SD character anime'; styleLabel = 'Chibi / SD'; }
+  const storyType = /vlog|ブイログ|ブログ/.test(text) ? 'Vlog' : /コメディ|comedy|面白/.test(text) ? 'Comedy' : 'Short Story';
+  return { durationSeconds:Math.max(5,Math.min(seconds,300)), aspectRatio, style, styleLabel, storyType };
+}
+
+async function openAnimeFromChat(message) {
+  pendingAnimePrompt = message;
+  if (!selectedProject) await openProject('demo');
+  const animeNode = nodes.find(node => getWorkspaceKey(node) === 'animation');
+  if (animeNode) openFullWorkspace(animeNode.id);
+  else await addAgent('AI Anime Agent');
+}
+
+async function openWorkFromChat(intent, message) {
+  if (intent === 'animation') return openAnimeFromChat(message);
+  if (!selectedProject) await openProject('demo');
+  const existing = nodes.find(node => getWorkspaceKey(node) === intent);
+  if (existing) openFullWorkspace(existing.id);
+  else await addAgent(workNameForIntent(intent));
+  setStatus(`${workNameForIntent(intent)}を開きました。内容を確認して実行できます。`, 'success');
+}
+
+function startVoiceInput(target) {
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) { setStatus('このブラウザでは音声入力を利用できません。テキストで入力してください。', 'error'); return; }
+  const recognition = new Recognition();
+  recognition.lang = 'ja-JP';
+  recognition.interimResults = true;
+  recognition.continuous = false;
+  const button = target?.closest('form')?.querySelector('.voice-input,[data-anime-voice]');
+  if (button) button.classList.add('listening');
+  recognition.onresult = event => { target.value = Array.from(event.results).map(result => result[0].transcript).join(''); target.dispatchEvent(new Event('input', { bubbles:true })); };
+  recognition.onend = () => { if (button) button.classList.remove('listening'); target.focus(); };
+  recognition.onerror = () => { if (button) button.classList.remove('listening'); setStatus('音声を認識できませんでした。もう一度お試しください。', 'error'); };
+  recognition.start();
+}
+
+function syncAnimePromptInference(form) {
+  const prompt = form.querySelector('[name="requirement"]')?.value || '';
+  const brief = inferAnimeBrief(prompt);
+  form.querySelector('[name="durationSeconds"]').value = brief.durationSeconds;
+  form.querySelector('[name="aspectRatio"]').value = brief.aspectRatio;
+  const style = [...form.querySelectorAll('[name="style"]')].find(input => input.value === brief.style);
+  if (style) style.checked = true;
+  const format = form.querySelector('.anime-detected-format');
+  const story = form.querySelector('.anime-detected-story');
+  const confirmation = form.querySelector('.anime-style-confirm header small');
+  if (format) format.textContent = `${brief.aspectRatio} · ${brief.durationSeconds} sec`;
+  if (story) story.textContent = brief.storyType;
+  if (confirmation) confirmation.textContent = `内容から「${brief.styleLabel}」を選びました。必要な時だけ変更してください。`;
+}
+
 function animeWorkspaceMarkup(result) {
   const treatment = result?.treatment;
   const shots = animeShotList(result);
   const images = storyboardImages[selectedProject] || {};
   const characters = treatment?.characters || [];
+  const brief = inferAnimeBrief(pendingAnimePrompt || result?.animeBrief?.requirement || '');
   const sceneCards = shots.map((shot,index) => {
     const image = images[animeImageKey(result,shot.shotNumber)];
     const video = generatedVideos[`${selectedProject}:${shot.shotNumber}`];
     return `<article class="studio-scene-card"><header><span>SCENE ${String(index + 1).padStart(2,'0')}</span><em>${shot.seconds}s</em><button title="Scene actions">•••</button></header><div class="studio-scene-frame">${image ? `<img src="${image.dataUrl}" alt="${escapeHtml(shot.shotNumber)}">` : `<span>${escapeHtml(shot.shotNumber)}</span><small>Frame not created</small>`}</div><section><b>${escapeHtml(shot.visual)}</b><p>${escapeHtml(shot.characterAction)}</p><blockquote>${escapeHtml(shot.dialogueNarration || 'No dialogue')}</blockquote><div><span>${escapeHtml(shot.camera)}</span><span>${escapeHtml(shot.location)}</span></div><label>Visual source<select data-scene-source="${escapeHtml(shot.shotNumber)}"><option value="generate">AI Generate</option><option value="upload">Upload Material</option><option value="asset">Existing Asset</option><option value="skip">Skip for now</option></select></label><footer><button data-anime-shot="${escapeHtml(shot.shotNumber)}">${image ? 'Regenerate Frame' : 'Generate Frame'}</button><span class="${video ? 'ready' : ''}">${video ? 'Video ready' : image ? 'Ready for Motion' : 'Waiting for Visual'}</span></footer></section></article>`;
   }).join('');
   return `<div class="anime-studio-board">
-    <section class="anime-studio-home"><div class="anime-studio-hero"><div><small>TEGY · AI ANIME STUDIO</small><h2>Create a 30-second Anime</h2><p>画風とサイズを選び、アイデアを一文入力するだけ。Script、Scene、Voice、Motion PlanはStudio Teamが自動生成します。</p></div><span>Quick Generate · 30 sec</span></div><form id="animeWorkspaceForm" class="anime-studio-brief"><div class="anime-quick-mode"><label><input type="radio" name="productionMode" value="quick" checked><span>⚡ Quick 30s</span></label><label><input type="radio" name="productionMode" value="series"><span>▦ Series</span></label><button type="button">↻ Continue Series</button><button type="button">⇢ Import Project</button></div><input type="hidden" name="mode" value="auto"><input type="hidden" name="durationSeconds" value="30"><section class="anime-quick-section"><header><b>1 · Choose a visual style</b><small>Style–model fit is shown as a recommendation</small></header><div class="anime-style-picker"><label><input type="radio" name="style" value="Cinematic 3D animation" checked><span><i class="style-preview preview-3d"></i><b>Cinematic 3D</b><small>Recommended · Seedance</small></span></label><label><input type="radio" name="style" value="Modern Japanese 2D anime"><span><i class="style-preview preview-2d"></i><b>2D Anime</b><small>Recommended · Veo / Kling</small></span></label><label><input type="radio" name="style" value="Motion comic with bold ink lines"><span><i class="style-preview preview-comic"></i><b>Motion Comic</b><small>Recommended · Kling / Veo</small></span></label><label><input type="radio" name="style" value="Chibi SD character anime"><span><i class="style-preview preview-chibi"></i><b>Chibi / SD</b><small>Recommended · Seedance / Veo</small></span></label></div></section><section class="anime-quick-section compact"><header><b>2 · Choose size</b></header><div class="anime-size-picker"><label><input type="radio" name="aspectRatio" value="9:16" checked><span><i class="portrait"></i><b>9:16</b><small>Shorts · TikTok · Reels</small></span></label><label><input type="radio" name="aspectRatio" value="16:9"><span><i class="landscape"></i><b>16:9</b><small>YouTube</small></span></label><label><input type="radio" name="aspectRatio" value="1:1"><span><i class="square"></i><b>1:1</b><small>Social Post</small></span></label></div></section><section class="anime-one-line"><label>3 · Describe it in one sentence<input name="requirement" required placeholder="例：初出勤の日、超能力を隠したい3Dキャラクターの会社員。でも、触れた物がすべて浮いてしまう。"></label><button type="submit">Generate 30s Anime →</button></section><details class="anime-advanced-options"><summary>Advanced options</summary><div><label>Story Type<select name="storyTemplate"><option>Comedy / Reversal</option><option>Daily Life</option><option>Character Introduction</option><option>Fantasy / Ability</option><option>Romance</option><option>Mystery / Suspense</option></select></label><label>Main Cast<select name="castSize"><option value="1">1 Character</option><option value="2" selected>2 Characters</option><option value="3">3 Characters</option></select></label><label>Voice<select name="voiceLanguage"><option>Japanese · Anime Expressive</option><option>Japanese · Natural</option><option>English · Natural</option><option>No dialogue</option></select></label></div></details></form><div class="anime-studio-team compact-team"><header><div><small>RUNS AUTOMATICALLY</small><h3>Writer → Designer → Voice → Motion → Director</h3></div><span>Open Advanced Edit after generation</span></header></div></section>
+    <section class="anime-studio-home"><div class="anime-studio-hero"><div><small>TEGY · AI ANIME STUDIO</small><h2>Tell us what you want to make</h2><p>話すか一文入力するだけ。尺・サイズ・Storyを読み取り、必要な場合だけ画風を確認します。</p></div><span>Voice-first · Quick Generate</span></div><form id="animeWorkspaceForm" class="anime-studio-brief anime-conversation-form"><input type="hidden" name="mode" value="auto"><input type="hidden" name="productionMode" value="quick"><input type="hidden" name="durationSeconds" value="${brief.durationSeconds}"><input type="hidden" name="aspectRatio" value="${brief.aspectRatio}"><section class="anime-prompt-box"><div class="chat-orb mini"><span></span><span></span></div><label><small>WHAT DO YOU WANT TO CREATE?</small><textarea name="requirement" required placeholder="例：縦型、日本線画漫画の30秒の猫Anime。猫目線で、ファッションVloggerの一日。">${escapeHtml(pendingAnimePrompt || '')}</textarea></label><button data-anime-voice type="button" aria-label="音声入力">⌁</button><button type="submit">Generate →</button></section><div class="anime-detected-brief"><span>自動認識</span><b class="anime-detected-format">${brief.aspectRatio} · ${brief.durationSeconds} sec</b><b class="anime-detected-story">${escapeHtml(brief.storyType)}</b><small>生成前に自由に言い直せます</small></div><section class="anime-style-confirm"><header><b>画風を確認</b><small>内容から「${escapeHtml(brief.styleLabel)}」を選びました。必要な時だけ変更してください。</small></header><div class="anime-style-picker"><label><input type="radio" name="style" value="Cinematic 3D animation" ${brief.style==='Cinematic 3D animation'?'checked':''}><span><i class="style-preview preview-3d"></i><b>Cinematic 3D</b><small>Seedance</small></span></label><label><input type="radio" name="style" value="Modern Japanese 2D anime" ${brief.style==='Modern Japanese 2D anime'?'checked':''}><span><i class="style-preview preview-2d"></i><b>2D Anime</b><small>Veo / Kling</small></span></label><label><input type="radio" name="style" value="Motion comic with bold ink lines" ${brief.style==='Motion comic with bold ink lines'?'checked':''}><span><i class="style-preview preview-comic"></i><b>Japanese Line Manga</b><small>Kling / Veo</small></span></label><label><input type="radio" name="style" value="Chibi SD character anime" ${brief.style==='Chibi SD character anime'?'checked':''}><span><i class="style-preview preview-chibi"></i><b>Chibi / SD</b><small>Seedance / Veo</small></span></label></div></section><details class="anime-advanced-options"><summary>Advanced settings</summary><div><label>Story Type<select name="storyTemplate"><option ${brief.storyType==='Vlog'?'selected':''}>Vlog</option><option>Comedy / Reversal</option><option>Daily Life</option><option>Character Introduction</option><option>Fantasy / Ability</option></select></label><label>Main Cast<select name="castSize"><option value="1" selected>1 Character</option><option value="2">2 Characters</option><option value="3">3 Characters</option></select></label><label>Voice<select name="voiceLanguage"><option>Japanese · Natural</option><option>Japanese · Anime Expressive</option><option>English · Natural</option><option>No dialogue</option></select></label></div></details></form></section>
     <section class="anime-writer-room">${treatment ? `<header><div><small>WRITER AGENT</small><h2>${escapeHtml(treatment.title)}</h2><p>${escapeHtml(treatment.logline)}</p></div><button>Rewrite with notes</button></header><div class="writer-room-grid"><article><small>STORY / SCRIPT</small><p contenteditable="true">${escapeHtml(treatment.fullScript)}</p></article><aside><small>STORY CONTROL</small><div><b>${treatment.targetDurationSeconds}s</b><span>Target duration</span></div><div><b>${shots.length}</b><span>Scenes</span></div><div><b>${escapeHtml(treatment.tone)}</b><span>Tone</span></div></aside></div>` : `<div class="studio-room-empty"><span>✎</span><h2>Writer Room</h2><p>Studio Homeで制作modeとStory ideaを入力すると、Writer AgentがScriptとScene候補を作ります。</p></div>`}</section>
     <section class="anime-design-studio">${treatment ? `<header><div><small>CHARACTER & BACKGROUND DESIGNERS</small><h2>Reusable IP Assets</h2></div><button>＋ Add Asset</button></header><div class="design-asset-grid">${characters.map(character=>`<article><div>◇</div><small>${escapeHtml(character.role)}</small><h3>${escapeHtml(character.name)}</h3><p>${escapeHtml(character.description)}</p><ul>${(character.continuityRules||[]).map(rule=>`<li>${escapeHtml(rule)}</li>`).join('')}</ul><button>Open Character Sheet</button></article>`).join('')}<article class="series-style-card"><div>✦</div><small>STYLE & WORLD</small><h3>${escapeHtml(treatment.visualApproach)}</h3><ul>${(treatment.productionRules||[]).map(rule=>`<li>${escapeHtml(rule)}</li>`).join('')}</ul><button>Lock Style Bible</button></article><article class="add-asset-card"><div>＋</div><h3>Location / Prop / Voice</h3><p>Seriesで再利用する固定Assetを追加</p></article></div>` : `<div class="studio-room-empty"><span>◇</span><h2>Design Studio</h2><p>Quick Shortは最小1 Character、SeriesはCharacter・Location・Voiceを固定Assetとして管理します。</p></div>`}</section>
     <section class="anime-scene-board">${treatment ? `<header><div><small>DIRECTOR · SCENE ASSEMBLY</small><h2>Scene Board</h2><p>Sceneを並べ替え、Visual source・Dialogue・Voice・MotionをScene単位で決定します。</p></div><button>＋ Add Scene</button></header><div class="studio-scene-grid">${sceneCards}</div>` : `<div class="studio-room-empty"><span>▤</span><h2>Scene Board</h2><p>ScriptをDirector AgentがSceneへ分解します。従来の字コンテ／絵コンテを分けず、ここで直接編集します。</p></div>`}</section>
@@ -768,6 +835,7 @@ async function runAnimeWorkspace() {
     if (!response.ok) throw new Error(payload.detail || payload.error || 'Anime plan generation failed.');
     animeOutputs[selectedProject] ||= [];
     animeOutputs[selectedProject].push(payload); saveAnimeOutputs();
+    pendingAnimePrompt = '';
     node.status='In Progress'; node.progress=65; node.detail=`${data.productionMode === 'series' ? 'Series' : 'Quick Short'} · ${animeShotList(payload).length} scenes ready`; saveProjectWorks();
     renderDeliveryWorkspace('animation',node);
     $('workspaceSaveStatus').textContent='✓ Studio Script & Scene Board saved';
@@ -1509,7 +1577,14 @@ async function submitChat(event) {
   const input = $('chatInput');
   const message = input.value.trim();
   if (!message || generating) return;
-  if (!selectedProject) openProject('demo');
+  const intent = detectCoworkerIntent(message);
+  if (intent !== 'script') {
+    setStatus(coworkerConfirmation(intent), 'success');
+    input.value = '';
+    await openWorkFromChat(intent, message);
+    return;
+  }
+  if (!selectedProject) await openProject('demo');
   generating = true;
   $('chatSubmit').disabled = true;
   input.disabled = true;
@@ -1570,6 +1645,8 @@ $('quickAdd').onclick = revealAddWork;
 document.querySelectorAll('[data-add-agent]').forEach(button => { button.onclick = () => addAgent(button.dataset.addAgent); });
 document.querySelectorAll('#inspectorTabs button').forEach(button => { button.onclick = () => showTab(button.dataset.tab); });
 $('chatForm').onsubmit = submitChat;
+$('voiceInput').onclick = () => startVoiceInput($('chatInput'));
+document.querySelectorAll('[data-chat-prompt]').forEach(button => { button.onclick = () => { $('chatInput').value = button.dataset.chatPrompt; $('chatInput').focus(); }; });
 window.addEventListener('resize', drawConnections);
 canvas.onclick = () => closeInspector();
 renderProjects();
