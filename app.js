@@ -4,6 +4,8 @@ import { detectCoworkerIntent, workNameForIntent, coworkerConfirmation } from '.
 import { initializeAuth, resetPassword, signInWithEmail, signInWithGoogle, signOut } from './src/services/supabase-auth.js';
 
 let signedInUser = null;
+// Keep the workspace public during the build-out. Set to true when access control launches.
+const AUTH_REQUIRED = false;
 
 const projects = [
   { id: 'azabu', name: '日本インプラント', sub: 'Japan Implant', mark: '日' },
@@ -1726,9 +1728,14 @@ $('authReset').onclick = async () => {
   finally { setAuthBusy(false); }
 };
 
-initializeAuth({ onUser: showAuthenticatedUser, onSignedOut: showSignedOut }).catch(error => {
-  document.body.classList.remove('auth-pending');
-  document.body.classList.add('auth-signed-out');
-  setAuthMessage(error.message, 'error');
-  setAuthBusy(true);
-});
+if (AUTH_REQUIRED) {
+  initializeAuth({ onUser: showAuthenticatedUser, onSignedOut: showSignedOut }).catch(error => {
+    document.body.classList.remove('auth-pending');
+    document.body.classList.add('auth-signed-out');
+    setAuthMessage(error.message, 'error');
+    setAuthBusy(true);
+  });
+} else {
+  document.body.classList.remove('auth-pending', 'auth-signed-out');
+  document.body.classList.add('auth-signed-in');
+}

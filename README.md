@@ -31,6 +31,8 @@ Use the existing `tegy-ai` Vercel project:
 
 ### Supabase authentication
 
+Authentication is currently staged but not enforced while the workspace is under development (`AUTH_REQUIRED = false` in `app.js`). Change it to `true` when access control is ready to launch.
+
 Add `SUPABASE_URL` and `SUPABASE_ANON_KEY` for Production, Preview, and Development. Use only the Supabase publishable/anon key, never the `service_role` key.
 
 In Supabase Authentication, enable Email/Password and Google, and disable public user sign-ups. Accounts are provisioned manually by a TEGY administrator. Set the production Vercel URL as the Site URL and add both the production URL and local development URL to Redirect URLs. Google OAuth must use the callback URL shown by Supabase. Sessions are persisted and refreshed by the Supabase browser client.
