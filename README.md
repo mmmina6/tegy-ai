@@ -29,6 +29,14 @@ Use the existing `tegy-ai` Vercel project:
 4. Optionally add `GEMINI_MODEL`; the default is `gemini-2.5-flash`.
 5. Redeploy the latest commit.
 
+### Supabase authentication
+
+Add `SUPABASE_URL` and `SUPABASE_ANON_KEY` for Production, Preview, and Development. Use only the Supabase publishable/anon key, never the `service_role` key.
+
+In Supabase Authentication, enable Email/Password and Google, and disable public user sign-ups. Accounts are provisioned manually by a TEGY administrator. Set the production Vercel URL as the Site URL and add both the production URL and local development URL to Redirect URLs. Google OAuth must use the callback URL shown by Supabase. Sessions are persisted and refreshed by the Supabase browser client.
+
+For customer sharing, model access separately from authentication: assign each user to an organization and grant read-only membership only to that organization's projects. Enforce this in the database/API layer rather than relying on the browser UI.
+
 Vercel serves the static UI and the server-side `/api/script` function together. No separate server is required.
 
 ## Structure

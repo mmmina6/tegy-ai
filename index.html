@@ -10,7 +10,25 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css" />
 </head>
-<body>
+<body class="auth-pending">
+  <section class="auth-gate" id="authGate" aria-live="polite">
+    <div class="auth-card">
+      <img src="./tegy-logo-horizontal.png" alt="TEGY" />
+      <p class="auth-kicker">CREATIVE INTELLIGENCE PLATFORM</p>
+      <h1>TEGY にログイン</h1>
+      <p class="auth-intro">AI Creative Workspace を続けるにはログインしてください。</p>
+      <button class="google-signin" id="authGoogle" type="button"><span>G</span>Google で続行</button>
+      <div class="auth-divider"><span>または</span></div>
+      <form id="authEmailForm">
+        <label>メールアドレス<input id="authEmail" type="email" autocomplete="email" required placeholder="name@company.com" /></label>
+        <label>パスワード<input id="authPassword" type="password" autocomplete="current-password" minlength="6" required placeholder="6文字以上" /></label>
+        <button class="auth-submit" id="authSubmit" type="submit">ログイン</button>
+      </form>
+      <button class="auth-link" id="authReset" type="button">パスワードを忘れた場合</button>
+      <p class="auth-access-note">アカウントは TEGY 管理者が発行します。</p>
+      <p class="auth-message" id="authMessage" role="status"></p>
+    </div>
+  </section>
   <div class="app" id="app">
     <aside class="sidebar" id="sidebar" aria-label="Projects">
       <div class="sidebar-brand"><img src="./tegy-logo.png" alt="TEGY" /></div>
@@ -30,8 +48,8 @@
       </div>
       <div class="sidebar-footer">
         <button>⚙ Settings</button><button>ⓘ Help</button>
-        <button class="google-workspace-entry" id="googleAccountBtn"><span>G</span><div><strong>Google Workspace</strong><small>Company login</small></div><i>›</i></button>
-        <div class="profile"><span class="avatar">M</span><div><strong>Mina Rho</strong><small>TEGY Creative Team</small></div></div>
+        <button class="google-workspace-entry" id="googleAccountBtn"><span id="accountProviderIcon">G</span><div><strong id="accountProviderLabel">Account</strong><small id="accountProviderDetail">Signed in</small></div><i>›</i></button>
+        <div class="profile"><span class="avatar" id="profileAvatar">M</span><div><strong id="profileName">Mina Rho</strong><small id="profileEmail">TEGY Creative Team</small></div></div>
       </div>
     </aside>
 
@@ -129,13 +147,13 @@
   <dialog class="google-login-dialog" id="googleLoginDialog">
     <button class="google-dialog-close" id="closeGoogleDialog">×</button>
     <img src="./tegy-logo-horizontal.png" alt="TEGY" />
-    <p class="google-kicker">SECURE COMPANY ACCESS</p>
-    <h2>TEGY にログイン</h2>
-    <p>会社の Google Workspace アカウントでログインしてください。</p>
-    <button class="google-signin" id="googleSigninPreview"><span>G</span>Google で続行</button>
-    <div class="domain-note">✓ 許可された会社ドメインのみ<br>✓ Project ごとのアクセス権限<br>✓ 操作履歴と安全なデータ管理</div>
-    <small>UI Preview · Google 認証は最終開発フェーズで接続します</small>
+    <p class="google-kicker">ACCOUNT</p>
+    <h2 id="accountDialogName">TEGY Account</h2>
+    <p id="accountDialogEmail"></p>
+    <button class="account-signout" id="accountSignOut">ログアウト</button>
+    <small>ログアウトするとログイン画面に戻ります。</small>
   </dialog>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script type="module" src="./app.js"></script>
 </body>
 </html>
