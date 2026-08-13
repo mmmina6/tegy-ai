@@ -935,11 +935,28 @@ function exportAnimePackage(fullPackage) {
   downloadFile('anime-scene-package.csv',rows.map(row=>row.map(csvCell).join(',')).join('\n'),'text/csv;charset=utf-8');
 }
 
+function personaList(items) { return (items || []).map(item => `<li>${escapeHtml(item)}</li>`).join(''); }
+
+function personaCardMarkup(persona, index, personas) {
+  const result = outputs[selectedProject]?.at(-1);
+  const selected = index === result?.insight?.selectedPersonaIndex;
+  return `<article class="persona-deep-card ${selected?'recommended':''}"><header><div><small>PERSONA ${index+1}${selected?' · SELECTED':''}</small><h3>${escapeHtml(persona.name)} · ${escapeHtml(persona.age)}</h3></div><button type="button" data-select-persona="${index}" ${selected?'disabled':''}>${selected?'✓ 採用中':'このPersonaを採用'}</button></header><p class="persona-profile">${escapeHtml(persona.profile)}</p><div class="persona-detail-grid"><section><b>課題が起きる状況</b><p>${escapeHtml(persona.situation || persona.lifestyle || '')}</p></section><section><b>生活・情報行動</b><p>${escapeHtml(persona.lifestyle || '')}</p><p>${escapeHtml(persona.socialBehavior || '')}</p></section><section><b>悩み・Pain</b><ul>${personaList(persona.pain)}</ul></section><section><b>Jobs to be Done</b><ul>${personaList(persona.jobsToBeDone)}</ul></section><section><b>発生理由の仮説</b><ul>${personaList(persona.problemCauses)}</ul></section><section><b>感情・葛藤</b><ul>${personaList(persona.emotions)}</ul></section><section><b>現在の代替行動</b><ul>${personaList(persona.currentAlternatives)}</ul></section><section><b>意思決定基準</b><ul>${personaList(persona.decisionCriteria)}</ul></section><section><b>反対理由・不安</b><ul>${personaList(persona.objections)}</ul></section><section><b>必要な情報</b><ul>${personaList(persona.informationNeeds)}</ul></section></div><div class="persona-insight"><small>CORE INSIGHT</small><p>${escapeHtml(persona.insight)}</p><b>${escapeHtml(persona.motivation || '')}</b></div><div class="persona-angle"><small>MESSAGE ANGLE</small><p>${escapeHtml(persona.messageAngle || '')}</p><div>${(persona.triggers||[]).map(item=>`<span>${escapeHtml(item)}</span>`).join('')}</div></div><details><summary>検証インタビュー質問（${(persona.interviewQuestions||[]).length}）</summary><ol>${personaList(persona.interviewQuestions)}</ol></details></article>`;
+}
+
+function selectPersona(index) {
+  const result=outputs[selectedProject]?.at(-1); if(!result?.insight?.personas?.[index])return;
+  result.insight.selectedPersonaIndex=index; result.insight.selectionReason=`TEGYユーザーが Persona ${index+1} を採用しました。以降のScript再生成とStoryboardで優先します。`; saveOutputs();
+  if(activeWorkspaceNodeId) renderDeliveryWorkspace('script',nodes.find(item=>item.id===activeWorkspaceNodeId));
+  else renderOutput(result);
+}
+
+function bindPersonaSelection() { document.querySelectorAll('[data-select-persona]').forEach(button=>{button.onclick=()=>selectPersona(Number(button.dataset.selectPersona));}); }
+
 function scriptProcessPreview(result) {
   if (!result?.insight) return '';
   const personas = result.insight.personas || [];
   const hooks = [result.script?.hook, ...(result.insight.recommendedHooks || [])].filter(Boolean);
-  return `<div class="script-demo-process"><section class="script-process-preview"><header><div><small>02 · CAMPAIGN PERSONA</small><h2>Persona & Creative Insight</h2></div><span>Research Context synced</span></header><div class="script-persona-grid">${personas.map((persona,index)=>`<article class="${index===result.insight.selectedPersonaIndex?'recommended':''}"><small>PERSONA ${index+1}${index===result.insight.selectedPersonaIndex?' · RECOMMENDED':''}</small><h3>${escapeHtml(persona.name)} · ${escapeHtml(persona.age)}</h3><p>${escapeHtml(persona.profile)}</p><dl><dt>PAIN</dt><dd>${persona.pain.map(escapeHtml).join(' / ')}</dd><dt>INSIGHT</dt><dd>${escapeHtml(persona.insight)}</dd><dt>TRIGGER</dt><dd>${persona.triggers.map(escapeHtml).join(' / ')}</dd></dl></article>`).join('')}</div><div class="script-direction-card"><small>CREATIVE DIRECTION</small><p>${escapeHtml(result.insight.creativeDirection)}</p></div></section><section class="script-hook-library"><header><small>03 · HOOK LIBRARY</small><h2>Approved Hook Options</h2></header>${hooks.map((hook,index)=>`<article><span>${String(index+1).padStart(2,'0')}</span><b>${escapeHtml(hook)}</b>${index===0?'<em>SELECTED</em>':''}</article>`).join('')}</section></div>`;
+  return `<div class="script-demo-process"><section class="script-process-preview"><header><div><small>02 · CAMPAIGN PERSONA</small><h2>Persona & Creative Insight</h2></div><span>Research Context synced</span></header><div class="script-persona-grid">${personas.map(personaCardMarkup).join('')}</div><div class="script-direction-card"><small>CREATIVE DIRECTION</small><p>${escapeHtml(result.insight.creativeDirection)}</p></div></section><section class="script-hook-library"><header><small>03 · HOOK LIBRARY</small><h2>Approved Hook Options</h2></header>${hooks.map((hook,index)=>`<article><span>${String(index+1).padStart(2,'0')}</span><b>${escapeHtml(hook)}</b>${index===0?'<em>SELECTED</em>':''}</article>`).join('')}</section></div>`;
 }
 
 function scriptWorkspaceMarkup(result) {
@@ -978,6 +995,7 @@ function prepareScriptSections() {
     loadScriptVersionPanel();
   }
   showScriptSection(editor ? 1 : 0);
+  bindPersonaSelection();
 }
 
 function showScriptSection(index) {
@@ -1612,9 +1630,10 @@ function showTab(name) {
 
 function renderOutput(result) {
   const { product, insight, script } = result;
-  const personas = insight.personas.map((persona, index) => `<article class="result-card ${index === insight.selectedPersonaIndex ? 'selected-persona' : ''}"><div class="result-kicker">PERSONA ${index + 1}${index === insight.selectedPersonaIndex ? ' · RECOMMENDED' : ''}</div><h3>${escapeHtml(persona.name)} · ${escapeHtml(persona.age)}</h3><p>${escapeHtml(persona.profile)}</p><dl><dt>Pain</dt><dd>${persona.pain.map(escapeHtml).join(' / ')}</dd><dt>Insight</dt><dd>${escapeHtml(persona.insight)}</dd><dt>Objection</dt><dd>${persona.objections.map(escapeHtml).join(' / ')}</dd><dt>Trigger</dt><dd>${persona.triggers.map(escapeHtml).join(' / ')}</dd></dl></article>`).join('');
+  const personas = insight.personas.map(personaCardMarkup).join('');
   const scenes = script.scenes.map(scene => `<tr><td>${scene.number}<small>${escapeHtml(scene.seconds)}</small></td><td><b>${escapeHtml(scene.visual)}</b><p>${escapeHtml(scene.narration)}</p><em>${escapeHtml(scene.onScreenText)}</em></td></tr>`).join('');
   $('outputPanel').innerHTML = `<div class="result-head"><div class="result-kicker">${escapeHtml(product.platform)} · ${product.durationSeconds}s</div><h2>${escapeHtml(script.title)}</h2><p>${escapeHtml(product.productName)} — ${escapeHtml(product.audience)}</p></div><section class="result-section"><h3>Product Brief</h3><p>${escapeHtml(product.description)}</p><div class="tag-row">${product.benefits.map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div></section><section class="result-section"><h3>Persona & Insight</h3>${personas}<p class="direction"><b>Creative Direction</b>${escapeHtml(insight.creativeDirection)}</p></section><section class="result-section script-result"><div class="result-kicker">HOOK</div><blockquote>${escapeHtml(script.hook)}</blockquote><h3>Full Script</h3><p class="script-copy">${escapeHtml(script.fullScript)}</p><table><tbody>${scenes}</tbody></table><div class="cta-box"><b>CTA</b>${escapeHtml(script.cta)}</div></section>`;
+  bindPersonaSelection();
   showTab('output');
   selectNode('script');
 }
