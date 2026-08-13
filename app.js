@@ -1,6 +1,9 @@
 import { STORYBOARD_IMAGE_PRICE_USD_1K, eligibleStoryboardIndexes, estimatedStoryboardCost, nextAssetReviewStatus } from './src/agents/script/storyboard-workflow.js';
 import { parakoProject, parakoProjectDetails, parakoWorks, parakoShadowResult } from './src/fixtures/parako-shadow-test.js';
 import { detectCoworkerIntent, workNameForIntent, coworkerConfirmation } from './src/coworker/intent-router.js';
+import { initializeAuth, resetPassword, signInWithEmail, signInWithGoogle, signOut } from './src/services/supabase-auth.js';
+
+let signedInUser = null;
 
 const projects = [
   { id: 'azabu', name: '日本インプラント', sub: 'Japan Implant', mark: '日' },
@@ -399,7 +402,8 @@ function showWelcome() {
   canvas.classList.add('hidden');
   closeInspector();
   $('breadcrumbs').innerHTML = '';
-  $('chatTitle').textContent = 'こんにちは、Minaさん 👋';
+  const firstName = signedInUser?.name?.split(/[\s　]/)[0] || 'Mina';
+  $('chatTitle').textContent = `こんにちは、${firstName}さん 👋`;
   $('chatSubtitle').textContent = '今日は何を創りましょうか？';
   renderProjects();
 }
@@ -1634,7 +1638,12 @@ $('addResearchRow').onclick = addResearchRow;
 $('addResearchSection').onclick = addResearchSection;
 $('googleAccountBtn').onclick = () => $('googleLoginDialog').showModal();
 $('closeGoogleDialog').onclick = () => $('googleLoginDialog').close();
-$('googleSigninPreview').onclick = () => alert('Google Workspace 認証は UI 定稿後に接続します。');
+$('accountSignOut').onclick = async () => {
+  $('accountSignOut').disabled = true;
+  try { await signOut(); $('googleLoginDialog').close(); }
+  catch (error) { alert(error.message); }
+  finally { $('accountSignOut').disabled = false; }
+};
 $('globalSearch').onfocus = event => renderProjectSearch(event.target.value);
 $('globalSearch').oninput = event => renderProjectSearch(event.target.value);
 $('globalSearch').onkeydown = event => { if (event.key === 'Escape') { closeProjectSearch(); event.target.blur(); } };
@@ -1652,3 +1661,74 @@ canvas.onclick = () => closeInspector();
 renderProjects();
 showWelcome();
 syncRemoteProjects();
+
+function setAuthMessage(message, kind = '') {
+  $('authMessage').textContent = message;
+  $('authMessage').className = `auth-message ${kind}`;
+}
+
+function setAuthBusy(busy) {
+  $('authGoogle').disabled = busy;
+  $('authSubmit').disabled = busy;
+  $('authEmail').disabled = busy;
+  $('authPassword').disabled = busy;
+}
+
+function showAuthenticatedUser(_user, display) {
+  signedInUser = display;
+  document.body.classList.remove('auth-pending', 'auth-signed-out');
+  document.body.classList.add('auth-signed-in');
+  $('profileName').textContent = display.name;
+  $('profileEmail').textContent = display.email;
+  $('accountDialogName').textContent = display.name;
+  $('accountDialogEmail').textContent = display.email;
+  $('accountProviderLabel').textContent = display.provider === 'google' ? 'Google Workspace' : 'Email Account';
+  $('accountProviderDetail').textContent = display.email;
+  $('accountProviderIcon').textContent = display.provider === 'google' ? 'G' : '@';
+  $('profileAvatar').textContent = display.avatarUrl ? '' : (display.name.charAt(0).toUpperCase() || 'T');
+  $('profileAvatar').style.backgroundImage = display.avatarUrl ? `url("${display.avatarUrl.replace(/["\\]/g, '')}")` : '';
+  if (!selectedProject) showWelcome();
+}
+
+function showSignedOut() {
+  signedInUser = null;
+  document.body.classList.remove('auth-pending', 'auth-signed-in');
+  document.body.classList.add('auth-signed-out');
+  setAuthBusy(false);
+  setAuthMessage('');
+}
+
+$('authGoogle').onclick = async () => {
+  setAuthBusy(true);
+  setAuthMessage('Google に移動しています…');
+  try { await signInWithGoogle(); }
+  catch (error) { setAuthMessage(error.message, 'error'); setAuthBusy(false); }
+};
+
+$('authEmailForm').onsubmit = async event => {
+  event.preventDefault();
+  const email = $('authEmail').value.trim();
+  const password = $('authPassword').value;
+  setAuthBusy(true);
+  setAuthMessage('ログインしています…');
+  try {
+    await signInWithEmail(email, password);
+  } catch (error) { setAuthMessage(error.message, 'error'); }
+  finally { setAuthBusy(false); }
+};
+
+$('authReset').onclick = async () => {
+  const email = $('authEmail').value.trim();
+  if (!email) { setAuthMessage('先にメールアドレスを入力してください。', 'error'); return; }
+  setAuthBusy(true);
+  try { await resetPassword(email); setAuthMessage('パスワード再設定メールを送りました。', 'success'); }
+  catch (error) { setAuthMessage(error.message, 'error'); }
+  finally { setAuthBusy(false); }
+};
+
+initializeAuth({ onUser: showAuthenticatedUser, onSignedOut: showSignedOut }).catch(error => {
+  document.body.classList.remove('auth-pending');
+  document.body.classList.add('auth-signed-out');
+  setAuthMessage(error.message, 'error');
+  setAuthBusy(true);
+});
