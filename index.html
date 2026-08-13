@@ -62,6 +62,7 @@
         <div class="topbar-right">
           <label class="search"><span>⌕</span><input id="globalSearch" autocomplete="off" placeholder="Search projects, work, deliverables..." /><kbd>⌘K</kbd><div class="search-results hidden" id="searchResults"></div></label>
           <button class="icon-button" id="openGenerationMonitor" title="Generation queue & usage">◷</button>
+          <button class="icon-button" id="openProjectDelivery" title="Export & Delivery">⇩</button>
           <button class="icon-button">♧<span class="notification-dot"></span></button>
           <button class="gradient-plus" id="quickAdd" aria-label="Add Work to current Project" title="Add Work to current Project">＋<span class="plus-tooltip">Add Work</span></button>
         </div>
@@ -143,6 +144,16 @@
     <header><div><small>PRODUCTION CONTROL</small><h2>Generation Queue & Usage</h2><p>Image / Video生成の進行状況と利用量をProject単位で確認します。</p></div><button id="closeGenerationMonitor">×</button></header>
     <div class="generation-summary" id="generationSummary"></div>
     <div class="generation-job-list" id="generationJobList"></div>
+  </dialog>
+  <dialog class="project-delivery-dialog" id="projectDeliveryDialog">
+    <header><div><small>EXPORT & DELIVERY</small><h2 id="deliveryDialogTitle">Project Delivery</h2><p>Project、Work、AI成果物を一つの納品セットとして書き出します。</p></div><button id="closeProjectDelivery">×</button></header>
+    <div class="delivery-format-grid">
+      <button data-project-export="excel"><span>▦</span><b>Excel</b><small>Brief・Work・Scenes・Research</small></button>
+      <button data-project-export="pdf"><span>▣</span><b>PDF</b><small>会議・確認用レポート</small></button>
+      <button data-project-export="json"><span>{ }</span><b>JSON</b><small>完全なProjectデータ</small></button>
+      <button data-project-export="bubble"><span>◉</span><b>泡泡糖</b><small>Workノード・依存関係</small></button>
+    </div>
+    <section class="delivery-manifest" id="deliveryManifest"></section>
   </dialog>
   <dialog class="google-login-dialog" id="googleLoginDialog">
     <button class="google-dialog-close" id="closeGoogleDialog">×</button>

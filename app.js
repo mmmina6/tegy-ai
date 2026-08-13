@@ -1175,6 +1175,53 @@ function downloadFile(name, content, type = 'text/plain;charset=utf-8') {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function safeFileName(value) { return String(value || 'tegy-project').trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-').toLowerCase(); }
+
+function projectDeliveryPackage() {
+  if (!selectedProject) return null;
+  const project = projects.find(item => item.id === selectedProject);
+  return {
+    format:'tegy-project-delivery', version:'1.0', exportedAt:new Date().toISOString(),
+    project:{ id:selectedProject, name:project?.name || selectedProject, subtitle:project?.sub || '', ...(projectDetails[selectedProject] || {}) },
+    works:structuredClone(projectWorks[selectedProject] || nodes || []),
+    research:structuredClone(researchOutputs[selectedProject] || []), scripts:structuredClone(outputs[selectedProject] || []),
+    anime:structuredClone(animeOutputs[selectedProject] || []), shadowBan:structuredClone(shadowOutputs[selectedProject] || []),
+    storyboard:structuredClone(storyboardPlans[selectedProject] || {})
+  };
+}
+
+function exportProjectExcel(data) {
+  const latest = data.scripts.at(-1); const scenes = latest?.script?.scenes || [];
+  const sheets = {
+    Project:[['Field','Value'],...Object.entries(data.project).map(([key,value])=>[key,Array.isArray(value)?value.join(' / '):value??''])],
+    Works:[['ID','Work','Status','Progress','Current task'],...data.works.map(work=>[work.id,work.name,work.status,work.progress??0,work.detail||''])],
+    Scenes:[['Scene','Seconds','Visual','Narration','On-screen text','Camera','Location'],...scenes.map(scene=>[scene.number,scene.seconds,scene.visual,scene.narration,scene.onScreenText,scene.camera,scene.location])],
+    Research:[['Run','Created','Summary'],...data.research.map((item,index)=>[index+1,item.createdAt||'',item.strategy?.summary||item.marketInsight?.summary||''])]
+  };
+  const html=`<!doctype html><html><head><meta charset="UTF-8"></head><body>${Object.entries(sheets).map(([name,rows])=>`<h2>${escapeHtml(name)}</h2><table border="1">${rows.map(row=>`<tr>${row.map(cell=>`<td>${escapeHtml(String(cell??''))}</td>`).join('')}</tr>`).join('')}</table><br>`).join('')}</body></html>`;
+  downloadFile(`${safeFileName(data.project.name)}-delivery.xls`,`\ufeff${html}`,'application/vnd.ms-excel;charset=utf-8');
+}
+
+function exportProjectPdf(data) {
+  const popup=window.open('','_blank'); if(!popup)return alert('PDF用ウィンドウを開けませんでした。ポップアップを許可してください。');
+  const latest=data.scripts.at(-1); const workRows=data.works.map(work=>`<tr><td>${escapeHtml(work.name)}</td><td>${escapeHtml(work.status||'')}</td><td>${work.progress||0}%</td><td>${escapeHtml(work.detail||'')}</td></tr>`).join('');
+  const scenes=(latest?.script?.scenes||[]).map(scene=>`<article><b>SCENE ${escapeHtml(scene.number)} · ${escapeHtml(scene.seconds)}</b><h3>${escapeHtml(scene.visual)}</h3><p>${escapeHtml(scene.narration)}</p><small>${escapeHtml(scene.onScreenText||'')}</small></article>`).join('');
+  popup.document.write(`<title>${escapeHtml(data.project.name)} · Delivery</title><style>body{font-family:Arial,sans-serif;padding:38px;color:#17191d}header{border-bottom:2px solid #222;padding-bottom:18px}small{color:#777}h1{margin:6px 0}.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:20px 0}.meta div,article{padding:12px;border:1px solid #ddd;border-radius:8px}table{width:100%;border-collapse:collapse}th,td{padding:8px;border:1px solid #ddd;text-align:left;font-size:11px}.scenes{display:grid;grid-template-columns:1fr 1fr;gap:10px}article h3,article p{font-size:11px}button{margin-bottom:20px;padding:10px 16px}@media print{button{display:none}.scenes{display:block}article{break-inside:avoid;margin-bottom:10px}}</style><button onclick="print()">Print / Save PDF</button><header><small>TEGY PROJECT DELIVERY</small><h1>${escapeHtml(data.project.name)}</h1><p>${escapeHtml(data.project.requirement||'')}</p></header><div class="meta"><div><small>OWNER</small><br>${escapeHtml(data.project.owner||'')}</div><div><small>DEADLINE</small><br>${escapeHtml(data.project.deadline||'')}</div></div><h2>Works</h2><table><tr><th>Work</th><th>Status</th><th>Progress</th><th>Current task</th></tr>${workRows}</table>${latest?`<h2>${escapeHtml(latest.script?.title||'Latest Script')}</h2><p>${escapeHtml(latest.script?.fullScript||'')}</p><div class="scenes">${scenes}</div>`:''}`); popup.document.close();
+}
+
+function exportProjectBubble(data) {
+  const bubbleNodes=data.works.map(work=>({id:work.id,label:work.name,type:work.workType||work.id,status:work.status,progress:work.progress||0,x:work.x,y:work.y,note:work.detail||''})); const manager=bubbleNodes.find(node=>node.id==='pm')||bubbleNodes[0];
+  const edges=manager?bubbleNodes.filter(node=>node.id!==manager.id).map(node=>({from:manager.id,to:node.id,relation:'coordinates'})):[];
+  downloadFile(`${safeFileName(data.project.name)}-bubble.json`,JSON.stringify({format:'tegy-bubble-map',version:'1.0',project:data.project,nodes:bubbleNodes,edges},null,2),'application/json');
+}
+
+function openProjectDelivery() {
+  if(!selectedProject){alert('先にProjectを選択してください。');return;} const data=projectDeliveryPackage(); $('deliveryDialogTitle').textContent=`${data.project.name} · Delivery`;
+  $('deliveryManifest').innerHTML=`<small>PACKAGE CONTENTS</small><div><span>${data.works.length}<b>Works</b></span><span>${data.research.length}<b>Research</b></span><span>${data.scripts.length}<b>Scripts</b></span><span>${data.anime.length}<b>Anime</b></span></div>`; $('projectDeliveryDialog').showModal();
+}
+
+function exportProject(format) { const data=projectDeliveryPackage(); if(!data)return; if(format==='excel')return exportProjectExcel(data); if(format==='pdf')return exportProjectPdf(data); if(format==='bubble')return exportProjectBubble(data); downloadFile(`${safeFileName(data.project.name)}-delivery.json`,JSON.stringify(data,null,2),'application/json'); }
+
 function downloadStoryboardFrame(index) {
   const result = outputs[selectedProject]?.at(-1);
   const image = storyboardImages[selectedProject]?.[storyboardKey(result,index)];
@@ -1626,6 +1673,9 @@ async function submitChat(event) {
 
 $('menuButton').onclick = () => app.classList.toggle('sidebar-hidden');
 $('openGenerationMonitor').onclick = openGenerationMonitor;
+$('openProjectDelivery').onclick = openProjectDelivery;
+$('closeProjectDelivery').onclick = () => $('projectDeliveryDialog').close();
+document.querySelectorAll('[data-project-export]').forEach(button => { button.onclick = () => exportProject(button.dataset.projectExport); });
 $('closeGenerationMonitor').onclick = () => $('generationMonitor').close();
 $('closeInspector').onclick = closeInspector;
 $('workMenuButton').onclick = toggleWorkMenu;
