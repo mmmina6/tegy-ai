@@ -117,6 +117,20 @@ function createInitialProjectWorks() {
   return [projectManager, research];
 }
 
+function isLegacyAllAgentCanvas(items = []) {
+  const keys = new Set(items.map(item => getWorkspaceKey(item)));
+  return items.length === baseNodes.length && ['manager','research','script','animation','shadow'].every(key => keys.has(key));
+}
+
+function workDisplayName(node) {
+  const labels = { manager:'AI Project Manager', research:'Research', script:'Script', animation:'Anime', shadow:'Shadow Ban / SEO', video:'Video', operations:'Operations', brand:'Brand' };
+  return labels[getWorkspaceKey(node)] || node.name;
+}
+
+function statusDisplay(status = '') {
+  return ({ Ready:'準備完了', 'In Progress':'進行中', Review:'確認待ち', Completed:'完了', Waiting:'待機中', Planned:'予定', 'Needs attention':'要確認', 'Thinking...':'処理中' })[status] || status;
+}
+
 let selectedProject = null;
 let nodes = [];
 let selectedNode = null;
@@ -135,6 +149,7 @@ let activeWorkspaceNodeId = null;
 let activeScriptExportSection = 3;
 let searchRequestSequence = 0;
 let pendingAnimePrompt = '';
+let activeVoiceSession = null;
 
 const $ = id => document.getElementById(id);
 const app = $('app');
@@ -181,7 +196,7 @@ async function syncRemoteProjects() {
     remoteProjects.forEach(project => {
       if (projects.some(item => item.id === project.id)) return;
       projects.push({ id:project.id, remote:true, name:project.project_name, sub:project.client_name, mark:project.project_name.trim().charAt(0) || '＋' });
-      projectDetails[project.id] = { owner:'Mina Rho', deadline:project.deadline || '未設定', requirement:project.final_requirement || 'Project Briefで最終要件を設定' };
+      projectDetails[project.id] = { owner:'Mina Rho', deadline:project.deadline || '未設定', requirement:project.final_requirement || 'Project Briefで最終要件を設定', source:project.customer_context?.website || '' };
     });
     renderProjects();
   } catch (error) {
@@ -245,6 +260,21 @@ kaoResearchItems[7].rows = [
   ['03','3媒体共通Master＋End card差し替え','制作効率と媒体最適化を両立','Operations']
 ];
 let activeResearchIndex = 0;
+let activeCompetitorIndex = 0;
+let activeCompetitorProductIndex = -1;
+
+const competitorCompanies = [
+  {
+    name:'競合会社 A', category:'調査実行後に自動分類', position:'主要競合候補',
+    overview:'Research Agent が公式サイトと公開情報から会社概要を取得します。',
+    background:'設立背景・沿革・経営上の転機を出典付きで整理します。',
+    culture:'企業理念・ブランド文化を取得します。',
+    businesses:['事業領域','主要ブランド','提供サービス'],
+    products:[
+      { name:'商品・サービス A', type:'自動分類', summary:'会社との関係を保ったまま商品情報を整理します。', offer:'価格・提供条件を取得', target:'対象顧客を推定後、要確認として表示', strengths:'特徴・USPを根拠と分けて抽出', evidence:'出典URLと取得日を記録', channels:'販売・接点チャネルを取得' }
+    ]
+  }
+];
 
 function getActiveResearchItems() {
   return selectedProject === 'kao-the-core' ? kaoResearchItems : researchItems;
@@ -285,6 +315,21 @@ function saveProjectWorks() {
   if (!selectedProject) return;
   projectWorks[selectedProject] = structuredClone(nodes);
   localStorage.setItem('tegy-project-works', JSON.stringify(projectWorks));
+  nodes.filter(node => node.remote).forEach(node => {
+    dataRequest(`/v1/works/${node.id}`, { method:'PATCH', body:{ title:node.name, status:node.status === 'Completed' ? 'completed' : node.status === 'In Progress' ? 'in_progress' : node.status === 'Review' ? 'review' : 'ready', progress:node.progress || 0, workspace_state:{ x:node.x, y:node.y, detail:node.detail, current_task:node.detail, deliverableId:node.deliverableId || null } } }).catch(() => {});
+  });
+}
+
+async function persistWorkDeliverable(node, kind, title, content, changeSummary) {
+  if (!node?.remote) return null;
+  if (!node.deliverableId) {
+    const result = await dataRequest(`/v1/works/${node.id}/deliverables`, { method:'POST', body:{ kind, title, content, change_summary:changeSummary || 'Initial version' } });
+    node.deliverableId = result.deliverable.id;
+  } else {
+    await dataRequest(`/v1/deliverables/${node.deliverableId}/versions`, { method:'POST', body:{ content, change_summary:changeSummary || 'Updated from Workspace' } });
+  }
+  saveProjectWorks();
+  return node.deliverableId;
 }
 
 function loadResearchOutputs() {
@@ -318,7 +363,7 @@ function saveAnimeOutputs() {
 function buildProjectContext() {
   const project = projects.find(item => item.id === selectedProject) || {};
   const details = projectDetails[selectedProject] || {};
-  return { id: project.id, name: project.name, customer: project.sub, owner: details.owner, deadline: details.deadline, finalRequirement: details.requirement, operationsLearning:operationInsights[selectedProject] || [] };
+  return { id: project.id, name: project.name, customer: project.sub, website:details.source || '', owner: details.owner, deadline: details.deadline, finalRequirement: details.requirement, operationsLearning:operationInsights[selectedProject] || [] };
 }
 
 function renderProjects() {
@@ -376,7 +421,11 @@ async function openProject(id) {
       alert(error.message);
       return;
     }
-  } else nodes = structuredClone(projectWorks[id] || sampleProjectWorks[id] || baseNodes);
+  } else {
+    const savedWorks = projectWorks[id] || sampleProjectWorks[id];
+    nodes = structuredClone(!savedWorks || isLegacyAllAgentCanvas(savedWorks) ? createInitialProjectWorks() : savedWorks);
+    if (savedWorks && isLegacyAllAgentCanvas(savedWorks)) saveProjectWorks();
+  }
   const latest = outputs[id]?.at(-1);
   if (latest) updateScriptNode('Completed', 'done', latest.script.title, 100);
   app.classList.remove('sidebar-hidden');
@@ -387,6 +436,8 @@ async function openProject(id) {
   $('breadcrumbs').innerHTML = `<strong>${project.name}</strong><span class="active-project-pill">● Active Project</span><span class="project-subline">› ${escapeHtml(details.campaign || 'YouTube Organic 広告制作プロジェクト')}　✎</span>`;
   $('chatTitle').textContent = 'TEGY AI Coworker';
   $('chatSubtitle').textContent = 'やりたい仕事を話してください。適切なWorkと次のActionを一緒に整理します。';
+  document.querySelector('.agent-label').textContent = 'ADD WORK';
+  $('saveQuickWork').classList.add('hidden');
   renderNodes();
   renderHistory();
   if (latest) renderOutput(latest);
@@ -407,6 +458,7 @@ function showWelcome() {
   const firstName = signedInUser?.name?.split(/[\s　]/)[0] || 'Mina';
   $('chatTitle').textContent = `こんにちは、${firstName}さん 👋`;
   $('chatSubtitle').textContent = '今日は何を創りましょうか？';
+  document.querySelector('.agent-label').textContent = 'QUICK START';
   renderProjects();
 }
 
@@ -418,7 +470,7 @@ function renderNodes() {
     element.dataset.id = node.id;
     element.style.left = `${node.x}%`;
     element.style.top = `${node.y}%`;
-    element.innerHTML = `<div class="node-head"><div class="node-icon ${node.cls}">${node.icon}</div><div><h3>${node.name}</h3><span class="node-status ${node.type}">● ${node.status}</span></div></div><p>${escapeHtml(node.detail)}</p>${node.progress ? `<div class="node-progress"><span style="width:${node.progress}%"></span></div>` : ''}`;
+    element.innerHTML = `<div class="node-head"><div class="node-icon ${node.cls}">${node.icon}</div><div><h3>${escapeHtml(workDisplayName(node))}</h3><span class="node-status ${node.type}">● ${escapeHtml(statusDisplay(node.status))}</span></div></div><p>${escapeHtml(node.detail)}</p>${node.progress ? `<div class="node-progress"><span style="width:${node.progress}%"></span></div>` : ''}`;
     element.onclick = event => { event.stopPropagation(); selectNode(node.id); };
     element.ondblclick = event => { event.stopPropagation(); openFullWorkspace(node.id); };
     enableDrag(element, node);
@@ -447,7 +499,18 @@ function enableDrag(element, node) {
 
 function drawConnections() {
   connections.innerHTML = '';
-  const pairs = [['pm', 'research', '#56d9aa'], ['research', 'script', '#4bcdb2'], ['pm', 'script', '#4f83ff'], ['pm', 'animation', '#f34eb4'], ['script', 'animation', '#f15fb7'], ['script', 'shadow', '#ff8b36'], ['script', 'video', '#f15fb7'], ['video', 'operations', '#56d9aa']];
+  const nodeByKey = key => nodes.find(item => getWorkspaceKey(item) === key);
+  const pairs = [];
+  const manager = nodeByKey('manager'), research = nodeByKey('research');
+  if (manager && research) pairs.push([manager.id, research.id, '#56d9aa']);
+  ['script','shadow','animation','video','operations','brand'].forEach(key => {
+    const work = nodeByKey(key);
+    if (research && work) pairs.push([research.id, work.id, key === 'shadow' ? '#ff8b36' : '#4bcdb2']);
+  });
+  const script = nodeByKey('script'), animation = nodeByKey('animation'), video = nodeByKey('video'), operations = nodeByKey('operations');
+  if (script && animation) pairs.push([script.id, animation.id, '#f15fb7']);
+  if (script && video) pairs.push([script.id, video.id, '#f15fb7']);
+  if (video && operations) pairs.push([video.id, operations.id, '#56d9aa']);
   const canvasRect = canvas.getBoundingClientRect();
   pairs.forEach(([a, b, color]) => {
     const first = nodeLayer.querySelector(`[data-id="${a}"]`), second = nodeLayer.querySelector(`[data-id="${b}"]`);
@@ -466,12 +529,12 @@ function selectNode(id) {
   if (!node) return;
   app.classList.add('inspector-open');
   inspector.classList.remove('hidden');
-  $('inspectorTitle').textContent = node.name;
-  $('inspectorAgentName').textContent = node.name;
+  $('inspectorTitle').textContent = workDisplayName(node);
+  $('inspectorAgentName').textContent = workDisplayName(node);
   const inspectorIcon = document.querySelector('.agent-title .agent-icon');
   inspectorIcon.textContent = node.icon;
   inspectorIcon.className = `agent-icon ${node.cls}`;
-  document.querySelector('.status-pill').textContent = `● ${node.status}`;
+  document.querySelector('.status-pill').textContent = `● ${statusDisplay(node.status)}`;
   $('progressText').textContent = `${node.progress || 0}%`;
   $('progressBar').style.width = `${node.progress || 0}%`;
   renderInspectorDetails(node);
@@ -493,7 +556,7 @@ function renderInspectorDetails(node) {
   }[key];
   const completed = Math.max(0, Math.floor((node.progress || 0) / 25));
   $('inspectorSteps').innerHTML = config.steps.map((step,index) => `<li class="${index < completed ? 'done' : index === completed ? 'active' : ''}">${index < completed ? '✓' : index === completed ? '●' : '○'} ${escapeHtml(step)}<em>${index < completed ? '完了' : index === completed ? '進行中' : '待機中'}</em></li>`).join('');
-  $('inspectorMeta').innerHTML = `<div><span>Owner</span><b>${escapeHtml(details.owner)}</b></div><div><span>Deadline</span><b>${escapeHtml(details.deadline)}</b></div>${details.platforms ? `<div><span>Platforms</span><b>${escapeHtml(details.platforms)}</b></div>` : ''}<div><span>Final requirement</span><b>${escapeHtml(details.requirement)}</b></div>${details.source ? `<div><span>Reference</span><b><a href="${escapeHtml(details.source)}" target="_blank" rel="noopener">Official product page ↗</a></b></div>` : ''}`;
+  $('inspectorMeta').innerHTML = `<div><span>担当者</span><b>${escapeHtml(details.owner)}</b></div><div><span>期限</span><b>${escapeHtml(details.deadline)}</b></div>${details.platforms ? `<div><span>対象媒体</span><b>${escapeHtml(details.platforms)}</b></div>` : ''}<div><span>最終要件</span><b>${escapeHtml(details.requirement)}</b></div>${details.source ? `<div><span>参照資料</span><b><a href="${escapeHtml(details.source)}" target="_blank" rel="noopener">公式ページ ↗</a></b></div>` : ''}`;
   $('inspectorCurrentTask').innerHTML = `<b>${escapeHtml(config.task)}</b><span>${escapeHtml(node.detail)}</span>`;
 }
 
@@ -504,7 +567,7 @@ function openFullWorkspace(id) {
   closeInspector();
   fullWorkspace.classList.remove('hidden');
   $('chatPanel').classList.add('hidden');
-  $('fullWorkspaceTitle').textContent = `${node.name} Workspace`;
+  $('fullWorkspaceTitle').textContent = `${workDisplayName(node)} Workspace`;
   $('fullWorkspaceIcon').textContent = node.icon;
   $('fullWorkspaceIcon').className = `workspace-agent-icon ${node.cls}`;
   const workspaceKey = getWorkspaceKey(node);
@@ -512,7 +575,7 @@ function openFullWorkspace(id) {
   const stepMap = {
     research: getActiveResearchItems().map((item,index) => `${String(index + 1).padStart(2,'0')}. ${item.title}`),
     script: ['01. Campaign Brief','02. Persona / Viewer','03. Hook Library','04. Script Editor','05. Scenes / 字コンテ','06. Visual Storyboard / 絵コンテ','07. Versions'],
-    animation: ['01. Studio Home','02. Writer Room','03. Design Studio','04. Scene Board','05. Voice & Motion','06. Director Cut','07. Delivery'],
+    animation: ['01. Creative Brief','02. Script','03. Image & Character','04. Storyboard','05. Animation','06. Director Review','07. Delivery'],
     shadow: ['01. Channel Overview','02. Health Signals','03. Content Audit','04. Keywords','05. Action Plan','06. Monitoring'],
     video: ['01. Video Brief','02. References','03. Shot List','04. Footage','05. Edit Review','06. Deliverables'],
     operations: ['01. Channel Setup','02. Calendar','03. Approval Queue','04. Publishing','05. Performance','06. Reports'],
@@ -542,7 +605,7 @@ function getWorkspaceKey(node) {
 function renderDeliveryWorkspace(key, node) {
   const definitions = {
     script: { kicker:'SCRIPT PRODUCTION', title:'Multi-format Script Workspace', copy:'AdvertisementまたはYouTube撮影台本を生成・編集し、字コンテから絵コンテまで制作します。', nav:['Campaign Brief','Persona / Viewer','Hook Library','Script Editor','Scenes / 字コンテ','Visual Storyboard / 絵コンテ','Versions'], center:'script', insight:'Script Typeに応じて構成と撮影項目を切り替え、Project / Research Contextを共通利用します。', exports:['Export Current Section','Export Full Package'] },
-    animation: { kicker:'AI ANIME STUDIO', title:'IP & Episode Production', copy:'Quick ShortとSeries制作を、Writer・Designer・Voice・Motion・Directorの専門Agentで進めます。', nav:['Studio Home','Writer Room','Design Studio','Scene Board','Voice & Motion','Director Cut','Delivery'], center:'animation', insight:'Quick Shortは1つのCharacterから高速制作。Seriesは固定Character・Location・VoiceをAsset Libraryとして継続利用します。', exports:['Export Scene Package','Export Anime Project'] },
+    animation: { kicker:'AI ANIME PRODUCTION', title:'Script to Anime Workspace', copy:'企画・Script・画像・Animation・音声・最終Animeを、一つの制作Workで完成させます。', nav:['Creative Brief','Script','Image & Character','Storyboard','Animation','Director Review','Delivery'], center:'animation', insight:'Quick Shortは一文から一括制作。Seriesは固定Character・Location・VoiceをAsset Libraryとして継続利用します。', exports:['制作素材を書き出す','Animeを納品'] },
     shadow: { kicker:'CHANNEL HEALTH', title:'Shadow Ban / SEO Audit', copy:'チャンネルの健全性、検索露出、投稿パターン、改善アクションをまとめます。', nav:['Channel Overview','Health Signals','Content Audit','Keywords','Action Plan','Monitoring'], center:'shadow', insight:'単一指標で Shadow Ban と断定せず、露出・検索・視聴維持・投稿履歴を組み合わせて評価します。', exports:['Audit Report','Action CSV'] },
     video: { kicker:'VIDEO PRODUCTION', title:'Video Production Board', copy:'参考動画から Shot Plan、素材、編集レビュー、最終納品までを管理します。', nav:['Video Brief','References','Shot List','Footage','Edit Review','Deliverables'], center:'video', insight:'参考動画は見た目だけでなく、Hook、尺、画面変化、CTA の構造として分解します。', exports:['Review Link','Delivery Package'] },
     operations: { kicker:'CHANNEL OPERATIONS', title:'Publishing & Growth', copy:'投稿計画、承認、公開、数値、次の改善を一つの運用画面にまとめます。', nav:['Channel Setup','Calendar','Approval Queue','Publishing','Performance','Reports'], center:'operations', insight:'制作数ではなく、公開後の学習が次の Research と Script に戻る運用ループを作ります。', exports:['Monthly Report','Calendar CSV'] },
@@ -651,7 +714,7 @@ function deliveryCenterMarkup(type) {
 }
 
 function operationsWorkspaceMarkup() {
-  return `<div class="operations-board live-operations"><section class="operations-input"><form id="contentItemForm"><small>CONTENT CALENDAR</small><h2>Add planned content</h2><div><input name="title" required placeholder="Content title"><select name="platform"><option>TikTok</option><option>Instagram</option><option>YouTube</option><option>Meta Ads</option></select><input name="scheduled_at" type="datetime-local"><button>Add</button></div></form><form id="performanceForm"><small>PERFORMANCE IMPORT</small><h2>Published result</h2><div><select name="content_item_id" id="performanceContentSelect" required><option value="">Select content</option></select><input name="impressions" type="number" min="0" placeholder="Impressions"><input name="views" type="number" min="0" placeholder="Views"><input name="engagements" type="number" min="0" placeholder="Engagements"><input name="conversions" type="number" min="0" placeholder="Conversions"><button>Save metrics</button></div></form></section><div class="performance-row" id="operationsTotals"><article><small>VIEWS</small><b>—</b></article><article><small>ENGAGEMENTS</small><b>—</b></article><article><small>CONVERSIONS</small><b>—</b></article></div><section class="operations-content-list"><header><small>PUBLISHING & PERFORMANCE</small><h2>Content inventory</h2></header><div id="operationsContentList"><p>Loading...</p></div></section><section class="operations-learning"><header><small>FEEDBACK LOOP</small><h2>Next Research / Script actions</h2></header><div id="operationsInsightList"><p>Metricsから学習内容を生成します。</p></div></section></div>`;
+  return `<div class="operations-board live-operations"><section class="operations-control-note"><div><small>CHANNEL OPERATIONS</small><h2>公開予定と制作進行をTEGYで統括</h2><p>予約公開の実行は既存の外部ツールを使用し、TEGYでは担当・承認・予定日時・公開結果を一元管理します。</p></div><button>外部予約ツールを開く ↗</button></section><section class="operations-input"><form id="contentItemForm"><small>CONTENT CALENDAR</small><h2>公開予定を追加</h2><div><input name="title" required placeholder="動画タイトル"><select name="platform"><option>TikTok</option><option>Instagram</option><option>YouTube</option><option>Meta Ads</option></select><input name="scheduled_at" type="datetime-local"><button>追加</button></div></form><form id="performanceForm"><small>PERFORMANCE IMPORT</small><h2>公開結果を記録</h2><div><select name="content_item_id" id="performanceContentSelect" required><option value="">コンテンツを選択</option></select><input name="impressions" type="number" min="0" placeholder="Impressions"><input name="views" type="number" min="0" placeholder="Views"><input name="engagements" type="number" min="0" placeholder="Engagements"><input name="conversions" type="number" min="0" placeholder="Conversions"><button>保存</button></div></form></section><div class="performance-row" id="operationsTotals"><article><small>VIEWS</small><b>—</b></article><article><small>ENGAGEMENTS</small><b>—</b></article><article><small>CONVERSIONS</small><b>—</b></article></div><section class="operations-content-list"><header><small>PUBLISHING & PERFORMANCE</small><h2>Content Library</h2></header><div id="operationsContentList"><p>読み込み中...</p></div></section><section class="operations-learning"><header><small>FEEDBACK LOOP</small><h2>次のResearch／Scriptへの改善点</h2></header><div id="operationsInsightList"><p>Metricsから学習内容を生成します。</p></div></section></div>`;
 }
 
 async function loadOperationsWorkspace() {
@@ -761,15 +824,46 @@ async function openWorkFromChat(intent, message) {
 function startVoiceInput(target) {
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Recognition) { setStatus('このブラウザでは音声入力を利用できません。テキストで入力してください。', 'error'); return; }
+  if (activeVoiceSession) {
+    activeVoiceSession.keepListening = false;
+    activeVoiceSession.recognition.stop();
+    activeVoiceSession = null;
+    return;
+  }
   const recognition = new Recognition();
   recognition.lang = 'ja-JP';
   recognition.interimResults = true;
-  recognition.continuous = false;
+  recognition.continuous = true;
   const button = target?.closest('form')?.querySelector('.voice-input,[data-anime-voice]');
-  if (button) button.classList.add('listening');
-  recognition.onresult = event => { target.value = Array.from(event.results).map(result => result[0].transcript).join(''); target.dispatchEvent(new Event('input', { bubbles:true })); };
-  recognition.onend = () => { if (button) button.classList.remove('listening'); target.focus(); };
-  recognition.onerror = () => { if (button) button.classList.remove('listening'); setStatus('音声を認識できませんでした。もう一度お試しください。', 'error'); };
+  const session = { recognition, button, target, keepListening:true, base:target.value.trim(), committed:'' };
+  activeVoiceSession = session;
+  if (button) { button.classList.add('listening'); button.setAttribute('aria-label','音声入力を停止'); }
+  recognition.onresult = event => {
+    let interim = '';
+    for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      const transcript = event.results[index][0].transcript;
+      if (event.results[index].isFinal) session.committed += transcript;
+      else interim += transcript;
+    }
+    target.value = [session.base, session.committed + interim].filter(Boolean).join(session.base ? ' ' : '');
+    target.dispatchEvent(new Event('input', { bubbles:true }));
+  };
+  recognition.onend = () => {
+    if (session.keepListening && activeVoiceSession === session) {
+      setTimeout(() => { try { recognition.start(); } catch {} }, 250);
+      return;
+    }
+    if (button) { button.classList.remove('listening'); button.setAttribute('aria-label','音声入力'); }
+    if (activeVoiceSession === session) activeVoiceSession = null;
+    target.focus();
+  };
+  recognition.onerror = event => {
+    if (event.error === 'no-speech' || event.error === 'aborted') return;
+    session.keepListening = false;
+    if (button) { button.classList.remove('listening'); button.setAttribute('aria-label','音声入力'); }
+    activeVoiceSession = null;
+    setStatus('音声を認識できませんでした。マイク権限を確認して、もう一度お試しください。', 'error');
+  };
   recognition.start();
 }
 
@@ -1457,6 +1551,11 @@ function applyResearchOutput(result) {
   const market = result.marketInsight;
   if (market?.marketPersonas?.length) targetItems[6].rows = market.marketPersonas.map(persona => [persona.name, persona.needs.join(' / '), persona.context, persona.evidenceBasis.join(' / ')]).concat([['Primary Market Insight','',market.primaryMarketInsight,'Research Agent']]);
   if (result.strategy?.strategicDirections?.length) targetItems[7].rows = result.strategy.strategicDirections.map(item => [String(item.priority), item.direction, item.rationale, item.recommendedWork]);
+  const recommendations = result.strategy?.strategicDirections || [];
+  const recommendationHost = $('researchRecommendations');
+  recommendationHost.classList.toggle('hidden', !recommendations.length);
+  recommendationHost.innerHTML = recommendations.length ? `<small>NEXT WORK</small><h3>推奨する次のWork</h3><p>Research結果から候補を作成しました。確認したものだけProjectへ追加します。</p>${recommendations.slice(0,3).map(item => `<button data-recommended-work="${escapeHtml(item.recommendedWork)}">＋ ${escapeHtml(item.recommendedWork)}</button>`).join('')}` : '';
+  recommendationHost.querySelectorAll('[data-recommended-work]').forEach(button => { button.onclick = () => addAgent(button.dataset.recommendedWork); });
   if (selectedProject !== 'kao-the-core') saveResearchBook();
   renderResearchBook();
 }
@@ -1479,10 +1578,78 @@ function renderResearchBook() {
   $('researchPageDescription').textContent = item.description;
   $('researchInsightTitle').textContent = item.title;
   $('researchInsightCopy').textContent = item.insight;
+  const isCompetitorPage = activeResearchIndex === 2;
+  $('researchTableWrap').classList.toggle('hidden', isCompetitorPage);
+  $('competitorExplorer').classList.toggle('hidden', !isCompetitorPage);
+  if (isCompetitorPage) {
+    renderCompetitorExplorer();
+    return;
+  }
   $('researchTableHead').innerHTML = `<tr>${item.columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}<th></th></tr>`;
   $('researchTableBody').innerHTML = item.rows.map((row,rowIndex) => `<tr>${row.map((cell,columnIndex) => `<td contenteditable="true" data-row="${rowIndex}" data-column="${columnIndex}">${escapeHtml(cell)}</td>`).join('')}<td><button data-delete-row="${rowIndex}" aria-label="Delete row">×</button></td></tr>`).join('');
   document.querySelectorAll('#researchTableBody [contenteditable]').forEach(cell => { cell.onblur = () => { item.rows[Number(cell.dataset.row)][Number(cell.dataset.column)] = cell.textContent.trim(); if (selectedProject !== 'kao-the-core') saveResearchBook(); }; });
   document.querySelectorAll('[data-delete-row]').forEach(button => { button.onclick = () => { item.rows.splice(Number(button.dataset.deleteRow),1); saveResearchBook(); renderResearchBook(); }; });
+}
+
+function renderCompetitorExplorer() {
+  if (activeCompetitorIndex >= competitorCompanies.length) activeCompetitorIndex = 0;
+  const company = competitorCompanies[activeCompetitorIndex];
+  const product = activeCompetitorProductIndex >= 0 ? company.products[activeCompetitorProductIndex] : null;
+  const host = $('competitorExplorer');
+  host.innerHTML = `
+    <div class="competitor-toolbar">
+      <div><small>COMPANY → PRODUCT</small><b>${product ? `${escapeHtml(company.name)} / ${escapeHtml(product.name)}` : escapeHtml(company.name)}</b></div>
+      <div><button data-add-competitor>＋ Company</button><button data-add-competitor-product>＋ Product / Service</button></div>
+    </div>
+    <div class="competitor-layout">
+      <aside class="competitor-company-list"><small>COMPETITOR COMPANIES</small>${competitorCompanies.map((item,index) => `<button class="${index === activeCompetitorIndex ? 'active' : ''}" data-competitor-index="${index}"><span>${escapeHtml(item.name.charAt(0))}</span><div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.category)}</small></div></button>`).join('')}</aside>
+      <section class="competitor-detail">
+        <div class="competitor-breadcrumb"><button data-company-home>${escapeHtml(company.name)}</button><span>›</span><b>${product ? escapeHtml(product.name) : 'Company profile'}</b></div>
+        ${product ? renderCompetitorProduct(company, product) : renderCompetitorCompany(company)}
+      </section>
+    </div>`;
+  host.querySelectorAll('[data-competitor-index]').forEach(button => { button.onclick = () => { activeCompetitorIndex = Number(button.dataset.competitorIndex); activeCompetitorProductIndex = -1; renderCompetitorExplorer(); }; });
+  host.querySelector('[data-company-home]').onclick = () => { activeCompetitorProductIndex = -1; renderCompetitorExplorer(); };
+  host.querySelectorAll('[data-product-index]').forEach(button => { button.onclick = () => { activeCompetitorProductIndex = Number(button.dataset.productIndex); renderCompetitorExplorer(); }; });
+  host.querySelector('[data-add-competitor]').onclick = addCompetitorCompany;
+  host.querySelector('[data-add-competitor-product]').onclick = addCompetitorProduct;
+}
+
+function renderCompetitorCompany(company) {
+  return `<article class="company-profile">
+    <header><div class="company-avatar">${escapeHtml(company.name.charAt(0))}</div><div><small>${escapeHtml(company.position)}</small><h2>${escapeHtml(company.name)}</h2><p>${escapeHtml(company.category)}</p></div><span>Company</span></header>
+    <div class="company-profile-grid">
+      <section><small>COMPANY OVERVIEW</small><p>${escapeHtml(company.overview)}</p></section>
+      <section><small>BACKGROUND / HISTORY</small><p>${escapeHtml(company.background)}</p></section>
+      <section><small>CULTURE / PHILOSOPHY</small><p>${escapeHtml(company.culture)}</p></section>
+      <section><small>BUSINESS PORTFOLIO</small><div class="profile-tags">${company.businesses.map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div></section>
+    </div>
+    <div class="company-products-head"><div><small>PRODUCTS & SERVICES</small><h3>この会社が提供している商品・サービス</h3></div><span>${company.products.length} items</span></div>
+    <div class="company-product-list">${company.products.map((item,index) => `<button data-product-index="${index}"><div><small>${escapeHtml(item.type)}</small><b>${escapeHtml(item.name)}</b><p>${escapeHtml(item.summary)}</p></div><span>View detail →</span></button>`).join('')}</div>
+  </article>`;
+}
+
+function renderCompetitorProduct(company, product) {
+  const fields = [['PRODUCT / SERVICE',product.summary],['OFFER / PRICE',product.offer],['TARGET',product.target],['FEATURES / USP',product.strengths],['EVIDENCE TO VERIFY',product.evidence],['CHANNELS',product.channels]];
+  return `<article class="product-profile"><header><small>${escapeHtml(product.type)}</small><h2>${escapeHtml(product.name)}</h2><p>by ${escapeHtml(company.name)}</p></header><div class="product-detail-grid">${fields.map(([label,value]) => `<section><small>${label}</small><p>${escapeHtml(value)}</p></section>`).join('')}</div><div class="product-reference-note"><b>Research rule</b><p>企業の背景・文化と、商品固有の機能・価格・根拠を混ぜずに記録します。広告やLPの参照情報は次の Research ページへ接続します。</p></div></article>`;
+}
+
+function addCompetitorCompany() {
+  const name = prompt('競合会社名を入力してください');
+  if (!name) return;
+  competitorCompanies.push({ name, category:'Category not set', position:'New benchmark', overview:'会社概要を追加してください。', background:'設立背景・沿革を追加してください。', culture:'企業理念・文化を追加してください。', businesses:['事業領域を追加'], products:[] });
+  activeCompetitorIndex = competitorCompanies.length - 1;
+  activeCompetitorProductIndex = -1;
+  renderCompetitorExplorer();
+}
+
+function addCompetitorProduct() {
+  const name = prompt('商品・サービス名を入力してください');
+  if (!name) return;
+  const company = competitorCompanies[activeCompetitorIndex];
+  company.products.push({ name, type:'Product / Service', summary:'概要を追加してください。', offer:'価格・提供条件を追加', target:'対象顧客を追加', strengths:'特徴・USPを追加', evidence:'根拠・出典を追加', channels:'販売・接点チャネルを追加' });
+  activeCompetitorProductIndex = company.products.length - 1;
+  renderCompetitorExplorer();
 }
 
 function addResearchRow() {
@@ -1561,22 +1728,81 @@ async function deleteSelectedWork() {
   renderNodes();
 }
 
-async function createProject() {
-  const name = prompt('新しいプロジェクト名を入力してください');
-  if (!name) return;
+function openNewProjectDialog() {
+  $('newProjectForm').reset();
+  $('newProjectDialog').showModal();
+  setTimeout(() => $('newProjectForm').elements.companyName.focus(), 50);
+}
+
+async function createProject(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = Object.fromEntries(new FormData(form));
+  const companyName = data.companyName.trim();
+  const name = data.projectName.trim() || companyName;
+  const requirement = data.requirement.trim() || 'Project Briefで最終要件を設定';
+  const website = data.website.trim();
+  const submit = form.querySelector('button[type="submit"]');
+  submit.disabled = true;
   try {
-    const result = await dataRequest('/v1/projects', { method:'POST', body:{ organization_id:organizationId, client_name:name.trim(), project_name:name.trim(), final_requirement:'Project Briefで最終要件を設定' } });
+    const result = await dataRequest('/v1/projects', { method:'POST', body:{ organization_id:organizationId, client_name:companyName, project_name:name, final_requirement:requirement, customer_context:{ website } } });
     const id = result.project.id;
-    projects.push({ id, remote:true, name:name.trim(), sub:'New Project', mark:name.trim().charAt(0) || '＋' });
-    projectDetails[id] = { owner:'Mina Rho', deadline:'未設定', requirement:'Project Briefで最終要件を設定' };
+    projects.push({ id, remote:true, name, sub:companyName, mark:companyName.charAt(0) || '＋' });
+    projectDetails[id] = { owner:'Mina Rho', deadline:'未設定', requirement, source:website };
     const researchResult = await dataRequest(`/v1/projects/${id}/works`, { method:'POST', body:{ type:'research', title:'Research Agent', workspace_state:{ x:42, y:43, detail:'Project Briefを入力してリサーチを開始' } } });
     projectWorks[id] = [createInitialProjectWorks()[0], nodeFromWork(researchResult.work)];
-    renderProjects(); openProject(id);
+    $('newProjectDialog').close();
+    renderProjects(); await openProject(id);
   } catch (error) { alert(error.message); }
+  finally { submit.disabled = false; }
+}
+
+function startQuickWork(name) {
+  const map = { 'Script Agent':['script','Script Agent','✎','cyan-bg'], 'Animation Agent':['animation','AI Anime Agent','▷','pink-bg'], 'AI Anime Agent':['animation','AI Anime Agent','▷','pink-bg'] };
+  const config = map[name];
+  if (!config) { setStatus('このWorkはProject Contextが必要です。先にProjectを選択してください。', 'error'); return; }
+  const [id, workName, icon, cls] = config;
+  selectedProject = 'quick-work';
+  projectDetails['quick-work'] = { owner:signedInUser?.name || 'Mina Rho', deadline:'未設定', requirement:'Quick Work · 保存先Project未設定' };
+  nodes = [{ id, name:workName, icon, cls, x:42, y:38, status:'Ready', type:'progress', detail:'Quick Workとして開始しました', progress:0 }];
+  welcome.classList.add('hidden');
+  canvas.classList.remove('hidden');
+  $('breadcrumbs').innerHTML = '<strong>Quick Work</strong><span class="active-project-pill">一時保存</span><span class="project-subline">完了後にProjectへ保存できます</span>';
+  document.querySelector('.agent-label').textContent = 'ADD WORK';
+  renderNodes();
+  openFullWorkspace(id);
+  $('saveQuickWork').classList.remove('hidden');
+}
+
+function openSaveQuickWorkDialog() {
+  $('quickWorkProjectSelect').innerHTML = projects.map(project => `<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)} · ${escapeHtml(project.sub)}</option>`).join('');
+  $('saveQuickWorkDialog').showModal();
+}
+
+async function saveQuickWorkToProject(event) {
+  event.preventDefault();
+  const targetId = new FormData(event.currentTarget).get('projectId');
+  const quickNode = nodes.find(item => item.id === activeWorkspaceNodeId) || nodes[0];
+  const target = projects.find(project => project.id === targetId);
+  if (!quickNode || !target) return;
+  let savedNode = { ...quickNode, id:`n${Date.now()}`, detail:quickNode.detail || 'Quick Workから保存' };
+  if (target.remote) {
+    const result = await dataRequest(`/v1/projects/${targetId}/works`, { method:'POST', body:{ type:workTypeFromName(quickNode.name), title:quickNode.name, status:'ready', progress:quickNode.progress || 0, workspace_state:{ x:42, y:43, detail:savedNode.detail } } });
+    savedNode = nodeFromWork(result.work);
+  }
+  projectWorks[targetId] ||= createInitialProjectWorks();
+  projectWorks[targetId].push(savedNode);
+  if (outputs['quick-work']?.length) { outputs[targetId] ||= []; outputs[targetId].push(...outputs['quick-work']); saveOutputs(); }
+  if (animeOutputs['quick-work']?.length) { animeOutputs[targetId] ||= []; animeOutputs[targetId].push(...animeOutputs['quick-work']); saveAnimeOutputs(); }
+  localStorage.setItem('tegy-project-works', JSON.stringify(projectWorks));
+  $('saveQuickWorkDialog').close();
+  await openProject(targetId);
+  const opened = nodes.find(item => item.id === savedNode.id) || nodes.find(item => getWorkspaceKey(item) === getWorkspaceKey(savedNode));
+  if (opened) openFullWorkspace(opened.id);
 }
 
 async function addAgent(name) {
-  if (!selectedProject) return;
+  if (!selectedProject) { startQuickWork(name); return; }
   const map = { 'Research Agent': ['◎', 'mint-bg'], 'Script Agent': ['✎', 'cyan-bg'], 'AI Anime Agent': ['▷', 'pink-bg'], 'Animation Agent': ['▷', 'pink-bg'], 'ShadowBan Agent': ['⬡', 'orange-bg'], 'Video Agent': ['▧', 'pink-bg'], 'Operations Agent': ['⌘', 'mint-bg'] };
   const [icon, cls] = map[name] || ['✦', 'cyan-bg'];
   let newWork = { id: `n${Date.now()}`, name, icon, cls, x: 38 + Math.random() * 28, y: 45 + Math.random() * 22, status: 'Ready', type: 'progress', detail: '新しいWorkを追加しました', progress: 0 };
@@ -1634,7 +1860,7 @@ function renderOutput(result) {
   const scenes = script.scenes.map(scene => `<tr><td>${scene.number}<small>${escapeHtml(scene.seconds)}</small></td><td><b>${escapeHtml(scene.visual)}</b><p>${escapeHtml(scene.narration)}</p><em>${escapeHtml(scene.onScreenText)}</em></td></tr>`).join('');
   $('outputPanel').innerHTML = `<div class="result-head"><div class="result-kicker">${escapeHtml(product.platform)} · ${product.durationSeconds}s</div><h2>${escapeHtml(script.title)}</h2><p>${escapeHtml(product.productName)} — ${escapeHtml(product.audience)}</p></div><section class="result-section"><h3>Product Brief</h3><p>${escapeHtml(product.description)}</p><div class="tag-row">${product.benefits.map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div></section><section class="result-section"><h3>Persona & Insight</h3>${personas}<p class="direction"><b>Creative Direction</b>${escapeHtml(insight.creativeDirection)}</p></section><section class="result-section script-result"><div class="result-kicker">HOOK</div><blockquote>${escapeHtml(script.hook)}</blockquote><h3>Full Script</h3><p class="script-copy">${escapeHtml(script.fullScript)}</p><table><tbody>${scenes}</tbody></table><div class="cta-box"><b>CTA</b>${escapeHtml(script.cta)}</div></section>`;
   bindPersonaSelection();
-  showTab('output');
+  showTab('overview');
   selectNode('script');
 }
 
@@ -1674,10 +1900,12 @@ async function submitChat(event) {
     outputs[selectedProject] ||= [];
     outputs[selectedProject].push(payload);
     saveOutputs();
+    const scriptNode = nodes.find(item => getWorkspaceKey(item) === 'script');
+    await persistWorkDeliverable(scriptNode, 'script', payload.script.title, payload, 'AI script generated from Coworker chat').catch(() => null);
     renderOutput(payload);
     renderHistory();
     updateScriptNode('Completed', 'done', payload.script.title, 100);
-    setStatus('脚本を生成しました。右側の Output で確認できます。', 'success');
+    setStatus('Scriptを生成して保存しました。Workspaceで確認できます。', 'success');
     input.value = '';
   } catch (error) {
     updateScriptNode('Needs attention', 'waiting', error.message, 0);
@@ -1691,6 +1919,7 @@ async function submitChat(event) {
 }
 
 $('menuButton').onclick = () => app.classList.toggle('sidebar-hidden');
+$('logoHome').onclick = () => { closeFullWorkspace(); closeInspector(); showWelcome(); };
 $('openGenerationMonitor').onclick = openGenerationMonitor;
 $('openProjectDelivery').onclick = openProjectDelivery;
 $('closeProjectDelivery').onclick = () => $('projectDeliveryDialog').close();
@@ -1703,6 +1932,9 @@ $('duplicateWork').onclick = duplicateSelectedWork;
 $('deleteWork').onclick = deleteSelectedWork;
 $('closeWorkspace').onclick = closeFullWorkspace;
 $('closeWorkspaceX').onclick = closeFullWorkspace;
+$('saveQuickWork').onclick = openSaveQuickWorkDialog;
+$('saveQuickWorkForm').onsubmit = saveQuickWorkToProject;
+$('closeSaveQuickWork').onclick = () => $('saveQuickWorkDialog').close();
 $('runWorkspaceAgent').onclick = runActiveWorkspaceAgent;
 $('openWorkspaceBtn').onclick = () => selectedNode && openFullWorkspace(selectedNode);
 $('addResearchRow').onclick = addResearchRow;
@@ -1720,7 +1952,9 @@ $('globalSearch').oninput = event => renderProjectSearch(event.target.value);
 $('globalSearch').onkeydown = event => { if (event.key === 'Escape') { closeProjectSearch(); event.target.blur(); } };
 document.addEventListener('click', event => { if (!event.target.closest('.search')) $('searchResults').classList.add('hidden'); });
 document.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); $('globalSearch').focus(); } });
-$('newProjectBtn').onclick = createProject;
+$('newProjectBtn').onclick = openNewProjectDialog;
+$('newProjectForm').onsubmit = createProject;
+$('closeNewProjectDialog').onclick = () => $('newProjectDialog').close();
 $('quickAdd').onclick = revealAddWork;
 document.querySelectorAll('[data-add-agent]').forEach(button => { button.onclick = () => addAgent(button.dataset.addAgent); });
 document.querySelectorAll('#inspectorTabs button').forEach(button => { button.onclick = () => showTab(button.dataset.tab); });

@@ -31,7 +31,7 @@
   </section>
   <div class="app" id="app">
     <aside class="sidebar" id="sidebar" aria-label="Projects">
-      <div class="sidebar-brand"><img src="./tegy-logo.png" alt="TEGY" /></div>
+      <button class="sidebar-brand" id="logoHome" type="button" aria-label="ホームへ戻る" title="ホームへ戻る"><img src="./tegy-logo.png" alt="TEGY" /></button>
       <div class="sidebar-scroll">
       <button class="new-project" id="newProjectBtn"><span>＋</span> New Project</button>
       <p class="section-label">PROJECTS</p>
@@ -60,7 +60,7 @@
           <div class="breadcrumbs" id="breadcrumbs"><strong>TEGY Canvas</strong></div>
         </div>
         <div class="topbar-right">
-          <label class="search"><span>⌕</span><input id="globalSearch" autocomplete="off" placeholder="Search projects, work, deliverables..." /><kbd>⌘K</kbd><div class="search-results hidden" id="searchResults"></div></label>
+          <label class="search"><span>⌕</span><input id="globalSearch" autocomplete="off" placeholder="Project・Work・成果物を検索..." /><kbd>⌘K</kbd><div class="search-results hidden" id="searchResults"></div></label>
           <button class="icon-button" id="openGenerationMonitor" title="Generation queue & usage">◷</button>
           <button class="icon-button" id="openProjectDelivery" title="Export & Delivery">⇩</button>
           <button class="icon-button">♧<span class="notification-dot"></span></button>
@@ -92,7 +92,7 @@
       <section class="full-workspace hidden" id="fullWorkspace" aria-label="Agent workspace">
         <header class="full-workspace-head">
           <div><button id="closeWorkspace" aria-label="Back to canvas">←</button><span class="workspace-agent-icon mint-bg" id="fullWorkspaceIcon">◎</span><div><small>AGENT WORKSPACE</small><h2 id="fullWorkspaceTitle">Research Agent Workspace</h2></div></div>
-          <div><span class="autosave" id="workspaceSaveStatus">◷ 自動保存済み</span><button class="regenerate" id="runWorkspaceAgent">↻ Run Agent</button><button id="closeWorkspaceX">×</button></div>
+          <div><span class="autosave" id="workspaceSaveStatus">◷ 自動保存済み</span><button class="regenerate hidden" id="saveQuickWork">Projectへ保存</button><button class="regenerate" id="runWorkspaceAgent">↻ Run Agent</button><button id="closeWorkspaceX">×</button></div>
         </header>
         <div class="workspace-steps" id="workspaceSteps"></div>
         <div class="research-workspace" id="researchWorkspace">
@@ -103,9 +103,10 @@
           </aside>
           <main class="research-book-main">
             <div class="research-page-head"><div><small id="researchPageKicker">01 · FOUNDATION</small><h1 id="researchPageTitle">Company & Product Research</h1><p id="researchPageDescription"></p></div><button>•••</button></div>
-            <div class="research-table-wrap"><table class="research-table"><thead id="researchTableHead"></thead><tbody id="researchTableBody"></tbody></table><button class="add-research-row" id="addResearchRow">＋ Add row</button></div>
+            <div class="research-table-wrap" id="researchTableWrap"><table class="research-table"><thead id="researchTableHead"></thead><tbody id="researchTableBody"></tbody></table><button class="add-research-row" id="addResearchRow">＋ Add row</button></div>
+            <div class="competitor-explorer hidden" id="competitorExplorer"></div>
           </main>
-          <aside class="research-notes"><section><small>AI RESEARCH INSIGHT</small><h3 id="researchInsightTitle"></h3><p id="researchInsightCopy"></p></section><section><small>PROJECT SHARED OUTPUT</small><div class="market-insight-card"><b>Market Persona / Insight</b><p>この市場全体の知見として保存され、Script Agent など全 Work から参照されます。</p></div></section><section><small>EXPORT</small><button>▣ Research PDF</button><button>▦ Export Table</button></section></aside>
+          <aside class="research-notes"><section><small>AI RESEARCH INSIGHT</small><h3 id="researchInsightTitle"></h3><p id="researchInsightCopy"></p></section><section id="researchRecommendations" class="hidden"></section><section><small>PROJECT SHARED OUTPUT</small><div class="market-insight-card"><b>Market Persona / Insight</b><p>この市場全体の知見として保存され、Scriptなど全Workから参照されます。</p></div></section><section><small>EXPORT</small><button>▣ Research PDF</button><button>▦ Export Table</button></section></aside>
         </div>
         <div class="generic-workspace hidden" id="genericWorkspace"></div>
       </section>
@@ -121,19 +122,18 @@
 
     <aside class="inspector hidden" id="inspector">
       <div class="inspector-head"><button id="closeInspector">←</button><strong id="inspectorTitle">Script Agent</strong><button id="workMenuButton" aria-label="Work actions">•••</button></div>
-      <div class="work-action-menu hidden" id="workActionMenu"><button id="renameWork">✎ Rename Work</button><button id="duplicateWork">▣ Duplicate Work</button><hr><button class="danger" id="deleteWork">♲ Delete Work</button></div>
+      <div class="work-action-menu hidden" id="workActionMenu"><button id="renameWork">✎ Work名を変更</button><button id="duplicateWork">▣ Workを複製</button><hr><button class="danger" id="deleteWork">♲ Workを削除</button></div>
       <div class="agent-title"><div class="agent-icon cyan-bg">✎</div><div><h2 id="inspectorAgentName">Script Agent</h2><span class="status-pill">● In Progress</span></div></div>
-      <div class="tabs" id="inspectorTabs"><button class="active" data-tab="overview">Overview</button><button data-tab="output">Output</button><button data-tab="history">History</button><button data-tab="prompt">Prompt</button></div>
+      <div class="tabs inspector-summary-tabs hidden" id="inspectorTabs"><button class="active" data-tab="overview">概要</button><button class="hidden" data-tab="output">成果物</button><button class="hidden" data-tab="history">履歴</button><button class="hidden" data-tab="prompt">Prompt</button></div>
       <div class="inspector-body" id="overviewPanel">
         <div class="label-row"><strong>進捗状況</strong><span id="progressText">65%</span></div>
         <div class="progress"><span id="progressBar" style="width:65%"></span></div>
-        <ul class="steps" id="inspectorSteps"></ul>
-        <hr />
+        <ul class="steps hidden" id="inspectorSteps"></ul>
         <div class="work-meta-list" id="inspectorMeta"></div>
         <hr />
         <strong>現在のタスク</strong>
         <div class="current-work-task" id="inspectorCurrentTask"></div>
-        <button class="open-workspace-button" id="openWorkspaceBtn"><span>Open Workspace</span><small>フル画面で作業する · Double click</small><b>→</b></button>
+        <button class="open-workspace-button" id="openWorkspaceBtn"><span>Workspaceを開く</span><small>成果物の確認・編集 · ダブルクリックでも開けます</small><b>→</b></button>
       </div>
       <div class="inspector-body hidden" id="outputPanel"><div class="empty-output">チャット欄に商品と広告条件を入力すると、ここに Persona と Script が表示されます。</div></div>
       <div class="inspector-body hidden" id="historyPanel"><div class="empty-output">この端末で生成した履歴が表示されます。</div></div>
@@ -155,6 +155,18 @@
     </div>
     <section class="delivery-manifest" id="deliveryManifest"></section>
   </dialog>
+  <dialog class="new-project-dialog" id="newProjectDialog">
+    <button class="google-dialog-close" id="closeNewProjectDialog">×</button>
+    <header><small>NEW PROJECT</small><h2>会社・Projectを登録</h2><p>会社名だけでも開始できます。Websiteを入力すると、ResearchでCompany Profileを自動作成できます。</p></header>
+    <form id="newProjectForm">
+      <label>会社名 <span>必須</span><input name="companyName" required placeholder="例：株式会社 TEGY"></label>
+      <label>Website <span>任意</span><input name="website" type="url" placeholder="https://..."></label>
+      <label>Project名 <span>任意</span><input name="projectName" placeholder="未入力の場合は会社名を使用"></label>
+      <label>相談内容・最終要件 <span>後から入力可能</span><textarea name="requirement" placeholder="今回相談された内容を簡単に入力"></textarea></label>
+      <button type="submit">Projectを作成 →</button>
+    </form>
+  </dialog>
+  <dialog class="new-project-dialog" id="saveQuickWorkDialog"><button class="google-dialog-close" id="closeSaveQuickWork">×</button><header><small>QUICK WORK</small><h2>保存先Projectを選択</h2><p>生成内容とVersionsを選択したProjectのWorkとして保存します。</p></header><form id="saveQuickWorkForm"><label>Project<select name="projectId" id="quickWorkProjectSelect" required></select></label><button type="submit">保存する →</button></form></dialog>
   <dialog class="google-login-dialog" id="googleLoginDialog">
     <button class="google-dialog-close" id="closeGoogleDialog">×</button>
     <img src="./tegy-logo-horizontal.png" alt="TEGY" />
