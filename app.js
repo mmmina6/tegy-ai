@@ -148,6 +148,9 @@ const operationInsights = {};
 const operationsContentCache = {};
 let operationsView = 'list';
 let operationsPage = 1;
+let taskView = 'today';
+let taskScope = 'mine';
+const taskPreviewState = {};
 let activeWorkspaceNodeId = null;
 let activeScriptExportSection = 3;
 let searchRequestSequence = 0;
@@ -574,6 +577,7 @@ function openFullWorkspace(id) {
   $('fullWorkspaceIcon').textContent = node.icon;
   $('fullWorkspaceIcon').className = `workspace-agent-icon ${node.cls}`;
   const workspaceKey = getWorkspaceKey(node);
+  $('workTaskCount').textContent = String(tasksForCurrentContext(workspaceKey).filter(task => task.status !== 'completed').length);
   $('runWorkspaceAgent').textContent = workspaceKey === 'research' ? '↻ Run Research' : workspaceKey === 'script' ? '↻ Generate Script' : '↻ Run Agent';
   const stepMap = {
     research: getActiveResearchItems().map((item,index) => `${String(index + 1).padStart(2,'0')}. ${item.title}`),
@@ -592,6 +596,54 @@ function openFullWorkspace(id) {
   $('genericWorkspace').classList.toggle('hidden', workspaceKey === 'research');
   if (workspaceKey === 'research') renderResearchBook();
   else renderDeliveryWorkspace(workspaceKey, node);
+}
+
+function previewTasks() {
+  const projectName = projects.find(item => item.id === selectedProject)?.name || 'TEGY';
+  return [
+    { id:'research-source', project:projectName, work:'Research', title:'Company Profileの出典を確認', due:'今日 11:30', priority:'High', status:'today', owner:'Mina Rho', detail:'公式サイト、会社概要、企業理念のSource URLを確認します。' },
+    { id:'script-review', project:projectName, work:'Script', title:'30秒Script v1をレビュー', due:'今日 15:00', priority:'Medium', status:'review', owner:'Mina Rho', detail:'Hook、表現根拠、CTAを確認してApproved Scriptにします。' },
+    { id:'operations-calendar', project:projectName, work:'Operations', title:'次回動画の公開予定を確認', due:'今日 17:00', priority:'Medium', status:'today', owner:'Mina Rho', detail:'媒体、公開日時、担当、承認状態を確認します。' },
+    { id:'client-material', project:projectName, work:'Research', title:'クライアント資料待ち', due:'期限未設定', priority:'High', status:'blocked', owner:'Mina Rho', detail:'商品価格と広告利用可能な表現根拠が未提出です。' }
+  ].map(task => ({ ...task, completed:Boolean(taskPreviewState[task.id]) }));
+}
+
+function tasksForCurrentContext(workspaceKey = null) {
+  const tasks = previewTasks();
+  if (!workspaceKey) return tasks;
+  const workNames = { research:'Research', script:'Script', operations:'Operations', shadow:'Shadow Ban / SEO', animation:'Anime', video:'Video', manager:'Project' };
+  return tasks.filter(task => task.work === workNames[workspaceKey]);
+}
+
+function renderTaskPreview() {
+  const workspaceKey = activeWorkspaceNodeId ? getWorkspaceKey(nodes.find(item => item.id === activeWorkspaceNodeId) || {}) : null;
+  const scoped = taskScope === 'work' ? tasksForCurrentContext(workspaceKey) : previewTasks();
+  const visible = scoped.filter(task => taskView === 'today' ? ['today','review'].includes(task.status) : task.status === taskView);
+  $('myTasksKicker').textContent = taskScope === 'work' ? `${workDisplayName(nodes.find(item => item.id === activeWorkspaceNodeId) || { name:'Work' })} · TASKS` : 'MY TASKS';
+  $('myTasksTitle').textContent = taskScope === 'work' ? 'このWorkのタスク' : '今日のタスク';
+  $('myTaskList').innerHTML = visible.length ? visible.map(task => `<article class="my-task-card ${task.completed ? 'completed' : ''}" data-task-id="${task.id}"><button class="task-check" aria-label="完了にする">${task.completed ? '✓' : ''}</button><div><span>${escapeHtml(task.project)} · ${escapeHtml(task.work)}</span><b>${escapeHtml(task.title)}</b><p>${escapeHtml(task.detail)}</p><small>${escapeHtml(task.due)} · ${escapeHtml(task.owner)}</small></div><em class="priority-${task.priority.toLowerCase()}">${escapeHtml(task.priority)}</em></article>`).join('') : '<div class="task-empty">該当するTaskはありません。</div>';
+  document.querySelectorAll('.my-task-card').forEach(card => { card.onclick = event => { if (!event.target.closest('.task-check')) card.classList.toggle('expanded'); }; });
+  document.querySelectorAll('.task-check').forEach(button => { button.onclick = event => { const card=event.currentTarget.closest('[data-task-id]'); taskPreviewState[card.dataset.taskId] = !taskPreviewState[card.dataset.taskId]; renderTaskPreview(); updateTaskLauncher(); }; });
+  document.querySelectorAll('[data-task-view]').forEach(button => button.classList.toggle('active', button.dataset.taskView === taskView));
+}
+
+function updateTaskLauncher() {
+  const count = previewTasks().filter(task => !task.completed && ['today','review'].includes(task.status)).length;
+  $('myTasksBadge').textContent = String(count);
+  $('myTasksLauncherCopy').textContent = `今日 ${count}件`;
+}
+
+function openTaskPreview(scope = 'mine') {
+  taskScope = scope;
+  taskView = 'today';
+  renderTaskPreview();
+  $('myTasksPanel').classList.remove('hidden');
+  $('myTasksLauncher').setAttribute('aria-expanded','true');
+}
+
+function closeTaskPreview() {
+  $('myTasksPanel').classList.add('hidden');
+  $('myTasksLauncher').setAttribute('aria-expanded','false');
 }
 
 function getWorkspaceKey(node) {
@@ -1973,6 +2025,11 @@ $('saveQuickWorkForm').onsubmit = saveQuickWorkToProject;
 $('closeSaveQuickWork').onclick = () => $('saveQuickWorkDialog').close();
 $('runWorkspaceAgent').onclick = runActiveWorkspaceAgent;
 $('openWorkspaceBtn').onclick = () => selectedNode && openFullWorkspace(selectedNode);
+$('myTasksLauncher').onclick = () => $('myTasksPanel').classList.contains('hidden') ? openTaskPreview('mine') : closeTaskPreview();
+$('openWorkTasks').onclick = () => openTaskPreview('work');
+$('closeMyTasks').onclick = closeTaskPreview;
+$('showAllTasks').onclick = () => { taskScope = 'mine'; taskView = 'today'; renderTaskPreview(); };
+document.querySelectorAll('[data-task-view]').forEach(button => { button.onclick = () => { taskView = button.dataset.taskView; renderTaskPreview(); }; });
 $('addResearchRow').onclick = addResearchRow;
 $('addResearchSection').onclick = addResearchSection;
 $('googleAccountBtn').onclick = () => $('googleLoginDialog').showModal();
@@ -2000,6 +2057,7 @@ document.querySelectorAll('[data-chat-prompt]').forEach(button => { button.oncli
 window.addEventListener('resize', drawConnections);
 canvas.onclick = () => closeInspector();
 renderProjects();
+updateTaskLauncher();
 showWelcome();
 syncRemoteProjects();
 

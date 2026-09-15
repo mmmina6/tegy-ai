@@ -92,7 +92,7 @@
       <section class="full-workspace hidden" id="fullWorkspace" aria-label="Agent workspace">
         <header class="full-workspace-head">
           <div><button id="closeWorkspace" aria-label="Back to canvas">←</button><span class="workspace-agent-icon mint-bg" id="fullWorkspaceIcon">◎</span><div><small>AGENT WORKSPACE</small><h2 id="fullWorkspaceTitle">Research Agent Workspace</h2></div></div>
-          <div><span class="autosave" id="workspaceSaveStatus">◷ 自動保存済み</span><button class="regenerate hidden" id="saveQuickWork">Projectへ保存</button><button class="regenerate" id="runWorkspaceAgent">↻ Run Agent</button><button id="closeWorkspaceX">×</button></div>
+          <div><span class="autosave" id="workspaceSaveStatus">◷ 自動保存済み</span><button class="workspace-task-button" id="openWorkTasks">✓ Tasks <b id="workTaskCount">3</b></button><button class="regenerate hidden" id="saveQuickWork">Projectへ保存</button><button class="regenerate" id="runWorkspaceAgent">↻ Run Agent</button><button id="closeWorkspaceX">×</button></div>
         </header>
         <div class="workspace-steps" id="workspaceSteps"></div>
         <div class="research-workspace" id="researchWorkspace">
@@ -119,6 +119,14 @@
         <div class="chat-status hidden" id="chatStatus" role="status"></div>
       </section>
     </main>
+
+    <button class="my-tasks-launcher" id="myTasksLauncher" aria-expanded="false"><span>✓</span><div><b>My Tasks</b><small id="myTasksLauncherCopy">今日 3件</small></div><i id="myTasksBadge">3</i></button>
+    <aside class="my-tasks-panel hidden" id="myTasksPanel" aria-label="My Tasks">
+      <header><div><small id="myTasksKicker">MY TASKS</small><h2 id="myTasksTitle">今日のタスク</h2></div><button id="closeMyTasks">×</button></header>
+      <div class="my-task-tabs"><button class="active" data-task-view="today">今日</button><button data-task-view="review">確認待ち</button><button data-task-view="blocked">Block</button></div>
+      <div class="my-task-list" id="myTaskList"></div>
+      <footer><span>AI Project Managerからの提案は、確認後に追加されます。</span><button id="showAllTasks">すべて見る →</button></footer>
+    </aside>
 
     <aside class="inspector hidden" id="inspector">
       <div class="inspector-head"><button id="closeInspector">←</button><strong id="inspectorTitle">Script Agent</strong><button id="workMenuButton" aria-label="Work actions">•••</button></div>
