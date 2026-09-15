@@ -441,7 +441,7 @@ async function openProject(id) {
   canvas.classList.remove('hidden');
   renderProjects();
   const details = projectDetails[id] || {};
-  $('breadcrumbs').innerHTML = `<strong>${project.name}</strong><span class="active-project-pill">● Active Project</span><span class="project-subline">› ${escapeHtml(details.campaign || 'YouTube Organic 広告制作プロジェクト')}　✎</span>`;
+  $('breadcrumbs').innerHTML = `<strong>${project.name}</strong><span class="active-project-pill">● Active Project</span>`;
   $('chatTitle').textContent = 'TEGY AI Coworker';
   $('chatSubtitle').textContent = 'やりたい仕事を話してください。適切なWorkと次のActionを一緒に整理します。';
   document.querySelector('.agent-label').textContent = 'ADD WORK';
@@ -498,6 +498,46 @@ function enableDrag(element, node) {
     drawConnections();
   };
   element.onpointerup = () => { if (down) saveProjectWorks(); down = false; };
+}
+
+function initializeCanvasToolbarDrag() {
+  const toolbar = $('canvasToolbar');
+  const handle = $('canvasToolbarHandle');
+  try {
+    const saved = JSON.parse(localStorage.getItem('tegy-canvas-toolbar-position') || 'null');
+    if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+      toolbar.style.left = `${saved.x}px`;
+      toolbar.style.top = `${saved.y}px`;
+      toolbar.style.right = 'auto';
+    }
+  } catch {}
+  let dragging = false, offsetX = 0, offsetY = 0;
+  handle.onpointerdown = event => {
+    const canvasRect = canvas.getBoundingClientRect();
+    const rect = toolbar.getBoundingClientRect();
+    dragging = true;
+    offsetX = event.clientX - rect.left;
+    offsetY = event.clientY - rect.top;
+    toolbar.style.left = `${rect.left - canvasRect.left}px`;
+    toolbar.style.top = `${rect.top - canvasRect.top}px`;
+    toolbar.style.right = 'auto';
+    handle.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+  handle.onpointermove = event => {
+    if (!dragging) return;
+    const canvasRect = canvas.getBoundingClientRect();
+    const x = Math.max(8, Math.min(canvas.clientWidth - toolbar.offsetWidth - 8, event.clientX - canvasRect.left - offsetX));
+    const y = Math.max(94, Math.min(canvas.clientHeight - toolbar.offsetHeight - 8, event.clientY - canvasRect.top - offsetY));
+    toolbar.style.left = `${x}px`;
+    toolbar.style.top = `${y}px`;
+  };
+  handle.onpointerup = event => {
+    if (!dragging) return;
+    dragging = false;
+    handle.releasePointerCapture(event.pointerId);
+    localStorage.setItem('tegy-canvas-toolbar-position', JSON.stringify({ x:toolbar.offsetLeft, y:toolbar.offsetTop }));
+  };
 }
 
 function drawConnections() {
@@ -2055,6 +2095,7 @@ window.addEventListener('resize', drawConnections);
 canvas.onclick = () => closeInspector();
 renderProjects();
 updateTaskLauncher();
+initializeCanvasToolbarDrag();
 showWelcome();
 syncRemoteProjects();
 
