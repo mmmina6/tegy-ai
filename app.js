@@ -415,6 +415,8 @@ function closeProjectSearch() {
 
 async function openProject(id) {
   closeFullWorkspace();
+  closeInspector();
+  closeTaskPreview();
   selectedProject = id;
   const project = projects.find(item => item.id === id);
   if (project?.remote) {
@@ -447,11 +449,6 @@ async function openProject(id) {
   renderNodes();
   renderHistory();
   if (latest) renderOutput(latest);
-  const initialNode = nodes.find(node => node.id === details.defaultNode)
-    || nodes.find(node => node.id === 'script')
-    || nodes.find(node => node.id === 'research')
-    || nodes.find(node => node.id !== 'pm');
-  if (initialNode) requestAnimationFrame(() => selectNode(initialNode.id));
 }
 
 function showWelcome() {
