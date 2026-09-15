@@ -283,7 +283,7 @@ let activeResearchIndex = 0;
 let activeCompetitorIndex = 0;
 let activeCompetitorProductIndex = -1;
 
-const competitorCompanies = [
+let competitorCompanies = [
   {
     name:'競合会社 A', category:'調査実行後に自動分類', position:'主要競合候補',
     overview:'Research Agent が公式サイトと公開情報から会社概要を取得します。',
@@ -295,6 +295,49 @@ const competitorCompanies = [
     ]
   }
 ];
+
+function competitorStorageKey() {
+  return `tegy-competitors-${selectedProject || 'default'}`;
+}
+
+function saveCompetitorCompanies() {
+  localStorage.setItem(competitorStorageKey(), JSON.stringify(competitorCompanies));
+}
+
+function hydrateCompetitorCompanies(findings = []) {
+  if (!findings.length) return;
+  competitorCompanies = findings.map((item,index) => ({
+    name:item.companyName || item.accountName || item.topic || `競合候補 ${index + 1}`,
+    group:item.group || String.fromCharCode(65 + Math.min(index, 2)),
+    category:item.category || item.confidence || 'Web Researchで取得',
+    position:item.position || '競合・参考候補',
+    overview:item.overview || item.finding || '公開情報を確認してください。',
+    background:item.background || item.evidence || '沿革・背景は追加確認が必要です。',
+    culture:item.culture || '企業理念・ブランド文化は追加確認が必要です。',
+    businesses:Array.isArray(item.businesses) && item.businesses.length ? item.businesses : ['競合商品・サービス', '広告・SNS参考'],
+    sourceUrl:item.sourceUrl || '',
+    products:Array.isArray(item.products) ? item.products.map(product => ({
+      name:product.name || '名称未確認', type:product.type || 'Product / Service',
+      summary:product.summary || '', offer:product.offer || '', target:product.target || '',
+      strengths:product.strengths || '', evidence:product.evidence || product.sourceUrl || '',
+      channels:product.channels || ''
+    })) : []
+  }));
+  activeCompetitorIndex = 0;
+  activeCompetitorProductIndex = -1;
+  saveCompetitorCompanies();
+}
+
+function restoreCompetitorCompanies() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(competitorStorageKey()) || 'null');
+    if (Array.isArray(saved) && saved.length) competitorCompanies = saved;
+    else {
+      const latest = researchOutputs[selectedProject]?.at(-1)?.landscape;
+      hydrateCompetitorCompanies(latest?.competitorCompanies?.length ? latest.competitorCompanies : (latest?.competitorAccounts || []));
+    }
+  } catch {}
+}
 
 function getActiveResearchItems() {
   return selectedProject === 'kao-the-core' ? kaoResearchItems : researchItems;
@@ -623,6 +666,7 @@ function openFullWorkspace(id) {
   activeWorkspaceNodeId = id;
   closeInspector();
   fullWorkspace.classList.remove('hidden');
+  $('myTasksLauncher').classList.add('hidden');
   $('chatPanel').classList.add('hidden');
   $('fullWorkspaceTitle').textContent = `${workDisplayName(node)} Workspace`;
   $('fullWorkspaceIcon').textContent = node.icon;
@@ -1619,6 +1663,7 @@ function shadowEvidenceMarkup(result) {
 function closeFullWorkspace() {
   activeWorkspaceNodeId = null;
   fullWorkspace.classList.add('hidden');
+  $('myTasksLauncher').classList.remove('hidden');
   $('chatPanel').classList.remove('hidden');
 }
 
@@ -1711,6 +1756,10 @@ function applyResearchOutput(result) {
     const findings = result.landscape?.[key] || [];
     if (findings.length && (key !== 'companyAndProduct' || (!companyFindings.length && !productFindings.length))) targetItems[index].rows = findings.map(item => [item.topic, item.finding, item.sourceUrl || item.evidence, item.needsVerification ? '要確認' : '確認済み']);
   });
+  const competitorResults = result.landscape?.competitorCompanies?.length
+    ? result.landscape.competitorCompanies
+    : (result.landscape?.competitorAccounts || []);
+  hydrateCompetitorCompanies(competitorResults);
   const groundedSources = result.webEvidence?.sources || [];
   if (groundedSources.length) {
     const existingUrls = new Set(targetItems[0].rows.map(row => row[2]));
@@ -1752,6 +1801,7 @@ function renderResearchBook() {
   $('researchTableWrap').classList.toggle('hidden', isCompetitorPage);
   $('competitorExplorer').classList.toggle('hidden', !isCompetitorPage);
   if (isCompetitorPage) {
+    restoreCompetitorCompanies();
     renderCompetitorExplorer();
     return;
   }
@@ -1769,10 +1819,10 @@ function renderCompetitorExplorer() {
   host.innerHTML = `
     <div class="competitor-toolbar">
       <div><small>COMPANY → PRODUCT</small><b>${product ? `${escapeHtml(company.name)} / ${escapeHtml(product.name)}` : escapeHtml(company.name)}</b></div>
-      <div><button data-add-competitor>＋ Company</button><button data-add-competitor-product>＋ Product / Service</button></div>
+      <div><button data-edit-competitor>✎ Company info</button><button data-add-competitor>＋ Company</button><button data-add-competitor-product>＋ Product / Service</button></div>
     </div>
     <div class="competitor-layout">
-      <aside class="competitor-company-list"><small>COMPETITOR COMPANIES</small>${competitorCompanies.map((item,index) => `<button class="${index === activeCompetitorIndex ? 'active' : ''}" data-competitor-index="${index}"><span>${escapeHtml(item.name.charAt(0))}</span><div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.category)}</small></div></button>`).join('')}</aside>
+      <aside class="competitor-company-list"><small>COMPETITOR COMPANIES</small>${competitorCompanies.map((item,index) => `<button class="${index === activeCompetitorIndex ? 'active' : ''}" data-competitor-index="${index}"><span>${escapeHtml(item.group || String.fromCharCode(65 + Math.min(index,2)))}</span><div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.category)}</small></div></button>`).join('')}</aside>
       <section class="competitor-detail">
         <div class="competitor-breadcrumb"><button data-company-home>${escapeHtml(company.name)}</button><span>›</span><b>${product ? escapeHtml(product.name) : 'Company profile'}</b></div>
         ${product ? renderCompetitorProduct(company, product) : renderCompetitorCompany(company)}
@@ -1783,11 +1833,12 @@ function renderCompetitorExplorer() {
   host.querySelectorAll('[data-product-index]').forEach(button => { button.onclick = () => { activeCompetitorProductIndex = Number(button.dataset.productIndex); renderCompetitorExplorer(); }; });
   host.querySelector('[data-add-competitor]').onclick = addCompetitorCompany;
   host.querySelector('[data-add-competitor-product]').onclick = addCompetitorProduct;
+  host.querySelector('[data-edit-competitor]').onclick = editCompetitorCompany;
 }
 
 function renderCompetitorCompany(company) {
   return `<article class="company-profile">
-    <header><div class="company-avatar">${escapeHtml(company.name.charAt(0))}</div><div><small>${escapeHtml(company.position)}</small><h2>${escapeHtml(company.name)}</h2><p>${escapeHtml(company.category)}</p></div><span>Company</span></header>
+    <header><div class="company-avatar">${escapeHtml(company.name.charAt(0))}</div><div><small>${escapeHtml(company.position)}</small><h2>${escapeHtml(company.name)}</h2><p>${escapeHtml(company.category)}</p>${company.sourceUrl ? `<a class="company-source-link" href="${escapeHtml(company.sourceUrl)}" target="_blank" rel="noopener">Source ↗</a>` : ''}</div><span>Company</span></header>
     <div class="company-profile-grid">
       <section><small>COMPANY OVERVIEW</small><p>${escapeHtml(company.overview)}</p></section>
       <section><small>BACKGROUND / HISTORY</small><p>${escapeHtml(company.background)}</p></section>
@@ -1807,9 +1858,24 @@ function renderCompetitorProduct(company, product) {
 function addCompetitorCompany() {
   const name = prompt('競合会社名を入力してください');
   if (!name) return;
-  competitorCompanies.push({ name, category:'Category not set', position:'New benchmark', overview:'会社概要を追加してください。', background:'設立背景・沿革を追加してください。', culture:'企業理念・文化を追加してください。', businesses:['事業領域を追加'], products:[] });
+  const website = prompt('会社Website / URLを入力してください（後から追加可能）') || '';
+  competitorCompanies.push({ name, group:String.fromCharCode(65 + Math.min(competitorCompanies.length,2)), category:'Category not set', position:'New benchmark', overview:'会社概要を追加してください。', background:'設立背景・沿革を追加してください。', culture:'企業理念・文化を追加してください。', businesses:['事業領域を追加'], sourceUrl:website, products:[] });
+  saveCompetitorCompanies();
   activeCompetitorIndex = competitorCompanies.length - 1;
   activeCompetitorProductIndex = -1;
+  renderCompetitorExplorer();
+}
+
+function editCompetitorCompany() {
+  const company = competitorCompanies[activeCompetitorIndex];
+  if (!company) return;
+  company.name = prompt('競合会社名', company.name) || company.name;
+  company.sourceUrl = prompt('公式Website / Source URL', company.sourceUrl || '') ?? company.sourceUrl;
+  company.category = prompt('Category', company.category || '') ?? company.category;
+  company.overview = prompt('Company overview', company.overview || '') ?? company.overview;
+  company.background = prompt('Background / History', company.background || '') ?? company.background;
+  company.culture = prompt('Culture / Philosophy', company.culture || '') ?? company.culture;
+  saveCompetitorCompanies();
   renderCompetitorExplorer();
 }
 
@@ -1818,6 +1884,7 @@ function addCompetitorProduct() {
   if (!name) return;
   const company = competitorCompanies[activeCompetitorIndex];
   company.products.push({ name, type:'Product / Service', summary:'概要を追加してください。', offer:'価格・提供条件を追加', target:'対象顧客を追加', strengths:'特徴・USPを追加', evidence:'根拠・出典を追加', channels:'販売・接点チャネルを追加' });
+  saveCompetitorCompanies();
   activeCompetitorProductIndex = company.products.length - 1;
   renderCompetitorExplorer();
 }
