@@ -32,6 +32,13 @@ const projectDetails = {
   'parako-shadow-test': parakoProjectDetails,
   demo: { owner:'Mina Rho', deadline:'2026/08/15', requirement:'商品の価値を生活シーンで伝える短尺広告' }
 };
+try {
+  const localProjects = JSON.parse(localStorage.getItem('tegy-local-projects') || '[]');
+  localProjects.forEach(entry => {
+    if (!projects.some(project => project.id === entry.project.id)) projects.push(entry.project);
+    projectDetails[entry.project.id] = entry.details;
+  });
+} catch {}
 
 const baseNodes = [
   { id: 'pm', name: 'AI Project Manager', icon: '✦', cls: 'pm', x: 36, y: 6, status: 'Thinking...', type: 'progress', detail: 'プロジェクトを推進中です', progress: 55 },
@@ -151,6 +158,13 @@ let operationsPage = 1;
 let taskView = 'today';
 let taskScope = 'mine';
 const taskPreviewState = {};
+const projectPreviewTasks = loadProjectPreviewTasks();
+let pendingTaskProjectId = null;
+
+function loadProjectPreviewTasks() {
+  try { return JSON.parse(localStorage.getItem('tegy-preview-tasks') || '{}'); }
+  catch { return {}; }
+}
 let activeWorkspaceNodeId = null;
 let activeScriptExportSection = 3;
 let searchRequestSequence = 0;
@@ -637,12 +651,43 @@ function openFullWorkspace(id) {
 
 function previewTasks() {
   const projectName = projects.find(item => item.id === selectedProject)?.name || 'TEGY';
+  if (projectPreviewTasks[selectedProject]?.length) return projectPreviewTasks[selectedProject].map(task => ({ ...task, completed:Boolean(taskPreviewState[task.id]) }));
   return [
     { id:'research-source', project:projectName, work:'Research', title:'Company Profileの出典を確認', due:'今日 11:30', priority:'High', status:'today', owner:'Mina Rho', detail:'公式サイト、会社概要、企業理念のSource URLを確認します。' },
     { id:'script-review', project:projectName, work:'Script', title:'30秒Script v1をレビュー', due:'今日 15:00', priority:'Medium', status:'review', owner:'Mina Rho', detail:'Hook、表現根拠、CTAを確認してApproved Scriptにします。' },
     { id:'operations-calendar', project:projectName, work:'Operations', title:'次回動画の公開予定を確認', due:'今日 17:00', priority:'Medium', status:'today', owner:'Mina Rho', detail:'媒体、公開日時、担当、承認状態を確認します。' },
     { id:'client-material', project:projectName, work:'Research', title:'クライアント資料待ち', due:'期限未設定', priority:'High', status:'blocked', owner:'Mina Rho', detail:'商品価格と広告利用可能な表現根拠が未提出です。' }
   ].map(task => ({ ...task, completed:Boolean(taskPreviewState[task.id]) }));
+}
+
+function suggestedResearchTasks(projectId) {
+  const project = projects.find(item => item.id === projectId) || {};
+  const projectName = project.name || 'New Project';
+  return [
+    { id:`${projectId}-company`, project:projectName, work:'Research', title:'会社情報・公式Sourceを確認', due:'今日', priority:'High', status:'today', owner:'Mina Rho', detail:'会社概要、沿革、企業理念、事業内容、公式Websiteを確認します。' },
+    { id:`${projectId}-product`, project:projectName, work:'Research', title:'商品・サービス情報を整理', due:'今日', priority:'High', status:'today', owner:'Mina Rho', detail:'特徴、価格、提供条件、保証、広告で使用できる根拠を整理します。' },
+    { id:`${projectId}-competitor`, project:projectName, work:'Research', title:'競合・広告・SNS参考を収集', due:'次の営業日', priority:'Medium', status:'today', owner:'Mina Rho', detail:'競合会社、商品、広告、YouTube・Instagram・TikTokの参考情報を収集します。' }
+  ];
+}
+
+function openTaskProposal(projectId) {
+  pendingTaskProjectId = projectId;
+  const project = projects.find(item => item.id === projectId);
+  $('taskProposalProject').textContent = project?.name || 'New Project';
+  $('taskProposalList').innerHTML = suggestedResearchTasks(projectId).map((task,index) => `<label><input type="checkbox" value="${index}" checked><span class="proposal-check">✓</span><div><small>${escapeHtml(task.work)} · ${escapeHtml(task.due)}</small><b>${escapeHtml(task.title)}</b><p>${escapeHtml(task.detail)}</p></div><em>${escapeHtml(task.priority)}</em></label>`).join('');
+  $('taskProposalDialog').showModal();
+}
+
+function confirmTaskProposal() {
+  if (!pendingTaskProjectId) return;
+  const tasks = suggestedResearchTasks(pendingTaskProjectId);
+  const selected = [...document.querySelectorAll('#taskProposalList input:checked')].map(input => tasks[Number(input.value)]);
+  projectPreviewTasks[pendingTaskProjectId] = selected;
+  localStorage.setItem('tegy-preview-tasks', JSON.stringify(projectPreviewTasks));
+  $('taskProposalDialog').close();
+  pendingTaskProjectId = null;
+  updateTaskLauncher();
+  openTaskPreview('mine');
 }
 
 function tasksForCurrentContext(workspaceKey = null) {
@@ -1869,16 +1914,32 @@ async function createProject(event) {
   const website = data.website.trim();
   const submit = form.querySelector('button[type="submit"]');
   submit.disabled = true;
+  let id;
   try {
     const result = await dataRequest('/v1/projects', { method:'POST', body:{ organization_id:organizationId, client_name:companyName, project_name:name, final_requirement:requirement, customer_context:{ website } } });
-    const id = result.project.id;
+    id = result.project.id;
     projects.push({ id, remote:true, name, sub:companyName, mark:companyName.charAt(0) || '＋' });
     projectDetails[id] = { owner:'Mina Rho', deadline:'未設定', requirement, source:website };
     const researchResult = await dataRequest(`/v1/projects/${id}/works`, { method:'POST', body:{ type:'research', title:'Research Agent', workspace_state:{ x:42, y:43, detail:'Project Briefを入力してリサーチを開始' } } });
     projectWorks[id] = [createInitialProjectWorks()[0], nodeFromWork(researchResult.work)];
+  } catch {
+    id = `local-${Date.now()}`;
+    const localProject = { id, remote:false, name, sub:companyName, mark:companyName.charAt(0) || '＋' };
+    const localDetails = { owner:'Mina Rho', deadline:'未設定', requirement, source:website };
+    projects.push(localProject);
+    projectDetails[id] = localDetails;
+    projectWorks[id] = createInitialProjectWorks();
+    saveProjectWorks();
+    const savedLocalProjects = JSON.parse(localStorage.getItem('tegy-local-projects') || '[]');
+    savedLocalProjects.push({ project:localProject, details:localDetails });
+    localStorage.setItem('tegy-local-projects', JSON.stringify(savedLocalProjects));
+  }
+  try {
     $('newProjectDialog').close();
-    renderProjects(); await openProject(id);
-  } catch (error) { alert(error.message); }
+    renderProjects();
+    await openProject(id);
+    openTaskProposal(id);
+  } catch (error) { setStatus(`Projectを作成できませんでした：${error.message}`, 'error'); }
   finally { submit.disabled = false; }
 }
 
@@ -2085,6 +2146,8 @@ document.addEventListener('keydown', event => { if ((event.metaKey || event.ctrl
 $('newProjectBtn').onclick = openNewProjectDialog;
 $('newProjectForm').onsubmit = createProject;
 $('closeNewProjectDialog').onclick = () => $('newProjectDialog').close();
+$('closeTaskProposal').onclick = () => { pendingTaskProjectId = null; $('taskProposalDialog').close(); };
+$('confirmTaskProposal').onclick = confirmTaskProposal;
 $('quickAdd').onclick = revealAddWork;
 document.querySelectorAll('[data-add-agent]').forEach(button => { button.onclick = () => addAgent(button.dataset.addAgent); });
 document.querySelectorAll('#inspectorTabs button').forEach(button => { button.onclick = () => showTab(button.dataset.tab); });
