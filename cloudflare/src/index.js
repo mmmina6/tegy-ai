@@ -294,10 +294,10 @@ async function usageSummary(env, url) {
 }
 
 async function operationsOverview(env, projectId) {
-  const { results: content = [] } = await env.DB.prepare(`SELECT c.*, (SELECT views FROM performance_snapshots p WHERE p.content_item_id=c.id ORDER BY captured_at DESC LIMIT 1) AS views, (SELECT engagements FROM performance_snapshots p WHERE p.content_item_id=c.id ORDER BY captured_at DESC LIMIT 1) AS engagements, (SELECT conversions FROM performance_snapshots p WHERE p.content_item_id=c.id ORDER BY captured_at DESC LIMIT 1) AS conversions FROM content_items c WHERE c.project_id=? AND c.status!='archived' ORDER BY COALESCE(c.scheduled_at,c.created_at) DESC LIMIT 100`).bind(projectId).all();
+  const { results: content = [] } = await env.DB.prepare(`SELECT c.*, (SELECT views FROM performance_snapshots p WHERE p.content_item_id=c.id ORDER BY captured_at DESC LIMIT 1) AS views, (SELECT engagements FROM performance_snapshots p WHERE p.content_item_id=c.id ORDER BY captured_at DESC LIMIT 1) AS engagements, (SELECT conversions FROM performance_snapshots p WHERE p.content_item_id=c.id ORDER BY captured_at DESC LIMIT 1) AS conversions FROM content_items c WHERE c.project_id=? AND c.status!='archived' ORDER BY COALESCE(c.scheduled_at,c.created_at) DESC LIMIT 1000`).bind(projectId).all();
   const { results: insights = [] } = await env.DB.prepare(`SELECT * FROM operation_insights WHERE project_id=? AND status='open' ORDER BY created_at DESC LIMIT 30`).bind(projectId).all();
   const totals = await env.DB.prepare(`SELECT SUM(views) AS views, SUM(engagements) AS engagements, SUM(conversions) AS conversions FROM performance_snapshots WHERE project_id=?`).bind(projectId).first();
-  return json({ content, insights, totals:totals || {} });
+  return json({ content, contentCount:content.length, insights, totals:totals || {} });
 }
 
 async function createContentItem(request, env, projectId) {

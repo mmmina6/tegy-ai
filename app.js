@@ -128,7 +128,7 @@ function workDisplayName(node) {
 }
 
 function statusDisplay(status = '') {
-  return ({ Ready:'準備完了', 'In Progress':'進行中', Review:'確認待ち', Completed:'完了', Waiting:'待機中', Planned:'予定', 'Needs attention':'要確認', 'Thinking...':'処理中' })[status] || status;
+  return ({ Ready:'準備完了', ready:'準備完了', 'In Progress':'進行中', in_progress:'進行中', Review:'確認待ち', review:'確認待ち', Completed:'完了', completed:'完了', Waiting:'待機中', waiting:'待機中', Planned:'予定', planned:'予定', scheduled:'公開予定', published:'公開済み', archived:'アーカイブ', 'Needs attention':'要確認', 'Thinking...':'処理中' })[status] || status;
 }
 
 let selectedProject = null;
@@ -145,6 +145,9 @@ const researchOutputs = loadResearchOutputs();
 const shadowOutputs = loadShadowOutputs();
 const animeOutputs = loadAnimeOutputs();
 const operationInsights = {};
+const operationsContentCache = {};
+let operationsView = 'list';
+let operationsPage = 1;
 let activeWorkspaceNodeId = null;
 let activeScriptExportSection = 3;
 let searchRequestSequence = 0;
@@ -722,14 +725,41 @@ async function loadOperationsWorkspace() {
   if (!project?.remote) return;
   try {
     const payload = await dataRequest(`/v1/projects/${selectedProject}/operations`);
+    operationsContentCache[selectedProject] = payload.content || [];
+    operationsPage = Math.max(1, operationsPage);
     operationInsights[selectedProject] = payload.insights.map(item => ({ type:item.insight_type, summary:item.summary, action:item.recommended_action }));
     $('operationsTotals').innerHTML = [['VIEWS',payload.totals.views],['ENGAGEMENTS',payload.totals.engagements],['CONVERSIONS',payload.totals.conversions]].map(([label,value])=>`<article><small>${label}</small><b>${Number(value || 0).toLocaleString()}</b></article>`).join('');
     $('performanceContentSelect').innerHTML = '<option value="">Select content</option>' + payload.content.map(item=>`<option value="${escapeHtml(item.id)}">${escapeHtml(item.title)} · ${escapeHtml(item.platform)}</option>`).join('');
-    $('operationsContentList').innerHTML = payload.content.length ? payload.content.map(item=>`<article><span class="operations-platform">${escapeHtml(item.platform)}</span><div><b>${escapeHtml(item.title)}</b><small>${escapeHtml(item.status)} · ${escapeHtml(item.scheduled_at || item.published_at || 'No date')}</small></div><em>${Number(item.views || 0).toLocaleString()} views · ${Number(item.engagements || 0).toLocaleString()} engagements</em></article>`).join('') : '<p>No content yet.</p>';
+    const contentSection = document.querySelector('.operations-content-list');
+    if (contentSection && !contentSection.querySelector('.content-library-tools')) contentSection.querySelector('header').insertAdjacentHTML('afterend', `<div class="content-library-tools"><input id="operationsContentSearch" placeholder="タイトル・番号を検索"><select id="operationsPlatformFilter"><option value="">すべての媒体</option><option>YouTube</option><option>TikTok</option><option>Instagram</option><option>Meta Ads</option></select><select id="operationsStatusFilter"><option value="">すべての状態</option><option value="planned">予定</option><option value="review">確認待ち</option><option value="published">公開済み</option></select><button data-operations-view="list">List</button><button data-operations-view="calendar">Calendar</button></div>`);
+    renderOperationsContent();
     $('operationsInsightList').innerHTML = payload.insights.length ? payload.insights.map(item=>`<article><span>${escapeHtml(item.insight_type)}</span><div><b>${escapeHtml(item.summary)}</b><p>${escapeHtml(item.recommended_action)}</p></div></article>`).join('') : '<p>Metricsから学習内容を生成します。</p>';
     $('contentItemForm').onsubmit = createOperationsContent;
     $('performanceForm').onsubmit = saveOperationsPerformance;
+    $('operationsContentSearch').oninput = () => { operationsPage = 1; renderOperationsContent(); };
+    $('operationsPlatformFilter').onchange = () => { operationsPage = 1; renderOperationsContent(); };
+    $('operationsStatusFilter').onchange = () => { operationsPage = 1; renderOperationsContent(); };
+    document.querySelectorAll('[data-operations-view]').forEach(button => { button.onclick = () => { operationsView = button.dataset.operationsView; renderOperationsContent(); }; });
   } catch (error) { $('operationsContentList').innerHTML = `<p>${escapeHtml(error.message)}</p>`; }
+}
+
+function renderOperationsContent() {
+  const all = operationsContentCache[selectedProject] || [];
+  const query = $('operationsContentSearch')?.value.trim().toLowerCase() || '';
+  const platform = $('operationsPlatformFilter')?.value || '';
+  const status = $('operationsStatusFilter')?.value || '';
+  const filtered = all.filter(item => (!query || `${item.title} ${item.id}`.toLowerCase().includes(query)) && (!platform || item.platform === platform) && (!status || item.status === status));
+  document.querySelectorAll('[data-operations-view]').forEach(button => button.classList.toggle('active', button.dataset.operationsView === operationsView));
+  if (operationsView === 'calendar') {
+    const groups = filtered.reduce((result,item) => { const key=(item.scheduled_at || item.published_at || '日付未設定').slice(0,10); (result[key] ||= []).push(item); return result; },{});
+    $('operationsContentList').innerHTML = filtered.length ? `<div class="operations-calendar">${Object.entries(groups).sort().map(([date,items]) => `<section><b>${escapeHtml(date)}</b>${items.map(item => `<article><span>${escapeHtml(item.platform)}</span><div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(statusDisplay(item.status))}</small></div></article>`).join('')}</section>`).join('')}</div>` : '<p>該当するコンテンツがありません。</p>';
+    return;
+  }
+  const pageSize = 50, pages = Math.max(1,Math.ceil(filtered.length/pageSize));
+  operationsPage = Math.min(operationsPage,pages);
+  const pageItems = filtered.slice((operationsPage-1)*pageSize,operationsPage*pageSize);
+  $('operationsContentList').innerHTML = pageItems.length ? pageItems.map(item=>`<article><span class="operations-platform">${escapeHtml(item.platform)}</span><div><b>${escapeHtml(item.title)}</b><small>${escapeHtml(statusDisplay(item.status))} · ${escapeHtml(item.scheduled_at || item.published_at || '日付未設定')}</small></div><em>${Number(item.views || 0).toLocaleString()} views · ${Number(item.engagements || 0).toLocaleString()} engagements</em></article>`).join('') + `<nav class="content-pagination"><button data-content-page="prev" ${operationsPage===1?'disabled':''}>←</button><span>${operationsPage} / ${pages} · ${filtered.length} items</span><button data-content-page="next" ${operationsPage===pages?'disabled':''}>→</button></nav>` : '<p>該当するコンテンツがありません。</p>';
+  document.querySelectorAll('[data-content-page]').forEach(button => { button.onclick = () => { operationsPage += button.dataset.contentPage === 'next' ? 1 : -1; renderOperationsContent(); }; });
 }
 
 async function createOperationsContent(event) {
@@ -1533,19 +1563,25 @@ async function runShadowAudit() {
 
 function applyResearchOutput(result) {
   const targetItems = getActiveResearchItems();
+  const companyFindings = result.landscape?.companyProfile || [];
+  const productFindings = result.landscape?.productPortfolio || [];
+  if (companyFindings.length || productFindings.length) {
+    targetItems[0].rows = companyFindings.map(item => [`会社｜${item.topic}`, item.finding, item.sourceUrl || item.evidence, item.needsVerification ? '要確認' : '確認済み'])
+      .concat(productFindings.map(item => [`商品・サービス｜${item.topic}`, item.finding, item.sourceUrl || item.evidence, item.needsVerification ? '要確認' : '確認済み']));
+  }
   const sectionMap = [
     ['companyAndProduct', 0], ['marketAndTrends', 1], ['competitorAccounts', 2],
     ['paidAdvertising', 3], ['organicAndVideo', 4], ['platformAndPolicy', 5]
   ];
   sectionMap.forEach(([key,index]) => {
     const findings = result.landscape?.[key] || [];
-    if (findings.length) targetItems[index].rows = findings.map(item => [item.topic, item.finding, item.sourceUrl || item.evidence, item.needsVerification ? 'Verify' : 'Ready']);
+    if (findings.length && (key !== 'companyAndProduct' || (!companyFindings.length && !productFindings.length))) targetItems[index].rows = findings.map(item => [item.topic, item.finding, item.sourceUrl || item.evidence, item.needsVerification ? '要確認' : '確認済み']);
   });
   const groundedSources = result.webEvidence?.sources || [];
   if (groundedSources.length) {
     const existingUrls = new Set(targetItems[0].rows.map(row => row[2]));
     groundedSources.forEach(source => {
-      if (!existingUrls.has(source.url)) targetItems[0].rows.push([source.title || 'Web source', 'Google Search grounded evidence', source.url, 'Grounded']);
+      if (!existingUrls.has(source.url)) targetItems[0].rows.push([`出典｜${source.title || source.domain || 'Web'}`, `${source.sourceType === 'official' ? '公式情報' : '参考情報'} · ${source.domain || ''}`, source.url, 'Grounded']);
     });
   }
   const market = result.marketInsight;
