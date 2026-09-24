@@ -1747,8 +1747,9 @@ async function runActiveWorkspaceAgent() {
       await dataRequest(`/v1/works/${node.id}`, { method:'PATCH', body:{ status:'completed', progress:100, workspace_state:{ x:node.x, y:node.y, detail:'Grounded Research Report', deliverableId:node.deliverableId } } });
     }
     applyResearchOutput(payload);
-    node.status = 'Completed'; node.progress = 100; saveProjectWorks();
-    $('workspaceSaveStatus').textContent = '✓ Research Report を保存しました';
+    const evidenceGapCount = payload.landscape?.evidenceGaps?.length || 0;
+    node.status = evidenceGapCount ? 'Review' : 'Completed'; node.progress = evidenceGapCount ? 90 : 100; saveProjectWorks();
+    $('workspaceSaveStatus').textContent = evidenceGapCount ? `✓ Research保存済み · ${evidenceGapCount}件を人工確認` : '✓ Research Report を保存しました';
   } catch (error) {
     node.status = 'Needs attention'; node.progress = 0; saveProjectWorks();
     $('workspaceSaveStatus').textContent = error.message;
@@ -1823,6 +1824,18 @@ function applyResearchOutput(result) {
   recommendationHost.classList.toggle('hidden', !recommendations.length);
   recommendationHost.innerHTML = recommendations.length ? `<small>NEXT WORK</small><h3>推奨する次のWork</h3><p>Research結果から候補を作成しました。確認したものだけProjectへ追加します。</p>${recommendations.slice(0,3).map(item => `<button data-recommended-work="${escapeHtml(item.recommendedWork)}">＋ ${escapeHtml(item.recommendedWork)}</button>`).join('')}` : '';
   recommendationHost.querySelectorAll('[data-recommended-work]').forEach(button => { button.onclick = () => addAgent(button.dataset.recommendedWork); });
+  const evidenceGaps = result.landscape?.evidenceGaps || [];
+  if (evidenceGaps.length && selectedProject) {
+    const projectName = projects.find(item => item.id === selectedProject)?.name || 'Project';
+    const current = projectPreviewTasks[selectedProject] || [];
+    evidenceGaps.forEach((gap,index) => {
+      const id = `${selectedProject}-evidence-gap-${index}`;
+      if (!current.some(task => task.id === id)) current.push({ id, project:projectName, work:'Research', title:'不足している根拠を確認', due:'期限未設定', priority:'High', status:'blocked', taskStatus:'blocked', owner:'Mina Rho', reviewer:'未設定', blockedReason:gap, detail:gap, history:[{ at:new Date().toISOString(), action:'created_from_research_gap', actor:'Research Agent' }] });
+    });
+    projectPreviewTasks[selectedProject] = current;
+    saveProjectTasks();
+    updateTaskLauncher();
+  }
   if (selectedProject !== 'kao-the-core') saveResearchBook();
   renderResearchBook();
 }
@@ -1853,10 +1866,11 @@ function renderResearchBook() {
     renderCompetitorExplorer();
     return;
   }
-  $('researchTableHead').innerHTML = `<tr>${item.columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}<th></th></tr>`;
-  $('researchTableBody').innerHTML = item.rows.map((row,rowIndex) => `<tr>${row.map((cell,columnIndex) => `<td contenteditable="true" data-row="${rowIndex}" data-column="${columnIndex}">${escapeHtml(cell)}</td>`).join('')}<td><button data-delete-row="${rowIndex}" aria-label="Delete row">×</button></td></tr>`).join('');
-  document.querySelectorAll('#researchTableBody [contenteditable]').forEach(cell => { cell.onblur = () => { item.rows[Number(cell.dataset.row)][Number(cell.dataset.column)] = cell.textContent.trim(); if (selectedProject !== 'kao-the-core') saveResearchBook(); }; });
+  $('researchTableHead').innerHTML = `<tr>${item.columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}<th>Review</th></tr>`;
+  $('researchTableBody').innerHTML = item.rows.map((row,rowIndex) => `<tr>${row.map((cell,columnIndex) => `<td data-row="${rowIndex}" data-column="${columnIndex}"><span contenteditable="true">${escapeHtml(cell)}</span>${columnIndex === 2 && /^https?:\/\//.test(cell) ? `<a class="research-source-open" href="${escapeHtml(cell)}" target="_blank" rel="noopener">Open ↗</a>` : ''}</td>`).join('')}<td class="research-review-actions"><button class="${row[3] === '確認済み' || row[3] === 'Confirmed' ? 'confirmed' : ''}" data-confirm-row="${rowIndex}" aria-label="Confirm row">✓</button><button data-delete-row="${rowIndex}" aria-label="Delete row">×</button></td></tr>`).join('');
+  document.querySelectorAll('#researchTableBody td[data-row] [contenteditable]').forEach(editor => { editor.onblur = () => { const cell=editor.closest('td'); item.rows[Number(cell.dataset.row)][Number(cell.dataset.column)] = editor.textContent.trim(); if (selectedProject !== 'kao-the-core') saveResearchBook(); }; });
   document.querySelectorAll('[data-delete-row]').forEach(button => { button.onclick = () => { item.rows.splice(Number(button.dataset.deleteRow),1); saveResearchBook(); renderResearchBook(); }; });
+  document.querySelectorAll('[data-confirm-row]').forEach(button => { button.onclick = () => { const row=item.rows[Number(button.dataset.confirmRow)]; row[3] = row[3] === '確認済み' ? '要確認' : '確認済み'; if (selectedProject !== 'kao-the-core') saveResearchBook(); renderResearchBook(); }; });
 }
 
 function renderCompetitorExplorer() {
