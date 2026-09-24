@@ -81,7 +81,8 @@ async function getProject(env, projectId) {
   const project = await env.DB.prepare(`SELECT * FROM projects WHERE id = ?`).bind(projectId).first();
   if (!project) return json({ error: "Project not found" }, 404);
   const { results: works = [] } = await env.DB.prepare(`SELECT * FROM works WHERE project_id = ? AND status != 'archived' ORDER BY updated_at DESC`).bind(projectId).all();
-  return json({ project: parseJsonFields(project), works: works.map(parseJsonFields) });
+  const { results: tasks = [] } = await env.DB.prepare(`SELECT * FROM tasks WHERE project_id = ? AND status != 'cancelled' ORDER BY due_at IS NULL, due_at, updated_at DESC`).bind(projectId).all();
+  return json({ project: parseJsonFields(project), works: works.map(parseJsonFields), tasks:tasks.map(parseJsonFields) });
 }
 
 async function updateProject(request, env, projectId) {
@@ -339,6 +340,44 @@ async function addPerformance(request, env, projectId) {
   return json({ snapshot:await env.DB.prepare(`SELECT * FROM performance_snapshots WHERE id=?`).bind(id).first(), insight:await env.DB.prepare(`SELECT * FROM operation_insights WHERE id=?`).bind(insightId).first() },201);
 }
 
+function taskHistoryEntry(action, body = {}) {
+  return { at:new Date().toISOString(), action, actor:body.actor_name || body.owner_name || "TEGY", status:body.status || null };
+}
+
+async function projectTasks(request, env, projectId, url) {
+  if (request.method === "GET") {
+    const status = url.searchParams.get("status");
+    const workId = url.searchParams.get("work_id");
+    let sql = `SELECT * FROM tasks WHERE project_id=?`;
+    const bindings = [projectId];
+    if (status) { sql += ` AND status=?`; bindings.push(status); }
+    if (workId) { sql += ` AND work_id=?`; bindings.push(workId); }
+    sql += ` ORDER BY CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, due_at IS NULL, due_at, updated_at DESC`;
+    const { results = [] } = await env.DB.prepare(sql).bind(...bindings).all();
+    return json({ tasks:results.map(parseJsonFields) });
+  }
+  const body = await bodyJson(request);
+  const missing = required(body, ["title"]);
+  if (missing.length) return json({ error:`Missing: ${missing.join(", ")}` }, 400);
+  const id = crypto.randomUUID();
+  const history = [taskHistoryEntry("created", body)];
+  await env.DB.prepare(`INSERT INTO tasks (id, project_id, work_id, title, detail, owner_user_id, owner_name, reviewer_user_id, reviewer_name, due_at, priority, status, blocked_reason, dependency_task_id, history_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, projectId, body.work_id || null, body.title, body.detail || null, body.owner_user_id || null, body.owner_name || null, body.reviewer_user_id || null, body.reviewer_name || null, body.due_at || null, body.priority || "medium", body.status || "todo", body.blocked_reason || null, body.dependency_task_id || null, JSON.stringify(history)).run();
+  return json({ task:parseJsonFields(await env.DB.prepare(`SELECT * FROM tasks WHERE id=?`).bind(id).first()) }, 201);
+}
+
+async function updateTask(request, env, taskId) {
+  const body = await bodyJson(request);
+  if (!body) return json({ error:"Invalid JSON body" }, 400);
+  const current = await env.DB.prepare(`SELECT * FROM tasks WHERE id=?`).bind(taskId).first();
+  if (!current) return json({ error:"Task not found" }, 404);
+  const history = JSON.parse(current.history_json || "[]");
+  history.push(taskHistoryEntry(body.history_action || "updated", body));
+  await env.DB.prepare(`UPDATE tasks SET title=?, detail=?, owner_user_id=?, owner_name=?, reviewer_user_id=?, reviewer_name=?, due_at=?, priority=?, status=?, blocked_reason=?, dependency_task_id=?, history_json=?, updated_at=datetime('now') WHERE id=?`)
+    .bind(body.title ?? current.title, body.detail ?? current.detail, body.owner_user_id ?? current.owner_user_id, body.owner_name ?? current.owner_name, body.reviewer_user_id ?? current.reviewer_user_id, body.reviewer_name ?? current.reviewer_name, body.due_at ?? current.due_at, body.priority ?? current.priority, body.status ?? current.status, body.blocked_reason ?? current.blocked_reason, body.dependency_task_id ?? current.dependency_task_id, JSON.stringify(history), taskId).run();
+  return json({ task:parseJsonFields(await env.DB.prepare(`SELECT * FROM tasks WHERE id=?`).bind(taskId).first()) });
+}
+
 async function route(request, env) {
   const url = new URL(request.url);
   if (request.method === "GET" && url.pathname === "/health") return json({ ok: true, service: "tegy-api", database: "d1" });
@@ -365,6 +404,8 @@ async function route(request, env) {
 
   const projectWorksMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/works$/);
   if (projectWorksMatch && request.method === "POST") return createWork(request, env, projectWorksMatch[1]);
+  const projectTasksMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/tasks$/);
+  if (projectTasksMatch && ["GET", "POST"].includes(request.method)) return projectTasks(request, env, projectTasksMatch[1], url);
 
   const campaignsMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/campaigns$/);
   if (campaignsMatch && ["GET", "POST"].includes(request.method)) return campaigns(request, env, campaignsMatch[1]);
@@ -374,6 +415,8 @@ async function route(request, env) {
   const workMatch = url.pathname.match(/^\/v1\/works\/([^/]+)$/);
   if (workMatch && request.method === "PATCH") return updateWork(request, env, workMatch[1]);
   if (workMatch && request.method === "DELETE") return archiveWork(env, workMatch[1]);
+  const taskMatch = url.pathname.match(/^\/v1\/tasks\/([^/]+)$/);
+  if (taskMatch && request.method === "PATCH") return updateTask(request, env, taskMatch[1]);
 
   const deliverablesMatch = url.pathname.match(/^\/v1\/works\/([^/]+)\/deliverables$/);
   if (deliverablesMatch && request.method === "GET") return listDeliverables(env, deliverablesMatch[1]);

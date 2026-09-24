@@ -165,6 +165,25 @@ function loadProjectPreviewTasks() {
   try { return JSON.parse(localStorage.getItem('tegy-preview-tasks') || '{}'); }
   catch { return {}; }
 }
+
+function saveProjectTasks() {
+  localStorage.setItem('tegy-preview-tasks', JSON.stringify(projectPreviewTasks));
+}
+
+function taskFromRemote(task) {
+  const work = nodes.find(node => node.id === task.work_id);
+  return {
+    id:task.id, remote:true, projectId:task.project_id,
+    project:projects.find(item => item.id === task.project_id)?.name || 'Project',
+    work:work ? workDisplayName(work) : 'Project', workId:task.work_id || null,
+    title:task.title, detail:task.detail || '', owner:task.owner_name || '未設定',
+    reviewer:task.reviewer_name || '未設定', due:task.due_at || '期限未設定',
+    priority:(task.priority || 'medium').replace(/^./, char => char.toUpperCase()),
+    status:task.status === 'review' ? 'review' : task.status === 'blocked' ? 'blocked' : 'today',
+    taskStatus:task.status, blockedReason:task.blocked_reason || '', dependencyTaskId:task.dependency_task_id || null,
+    history:task.history || [], completed:task.status === 'completed'
+  };
+}
 let activeWorkspaceNodeId = null;
 let activeScriptExportSection = 3;
 let searchRequestSequence = 0;
@@ -482,6 +501,8 @@ async function openProject(id) {
       const pm = createInitialProjectWorks()[0];
       nodes = [pm, ...payload.works.map(nodeFromWork)];
       projectWorks[id] = structuredClone(nodes);
+      projectPreviewTasks[id] = (payload.tasks || []).map(taskFromRemote);
+      saveProjectTasks();
     } catch (error) {
       alert(error.message);
       return;
@@ -722,12 +743,26 @@ function openTaskProposal(projectId) {
   $('taskProposalDialog').showModal();
 }
 
-function confirmTaskProposal() {
+async function confirmTaskProposal() {
   if (!pendingTaskProjectId) return;
   const tasks = suggestedResearchTasks(pendingTaskProjectId);
   const selected = [...document.querySelectorAll('#taskProposalList input:checked')].map(input => tasks[Number(input.value)]);
-  projectPreviewTasks[pendingTaskProjectId] = selected;
-  localStorage.setItem('tegy-preview-tasks', JSON.stringify(projectPreviewTasks));
+  const projectId = pendingTaskProjectId;
+  const project = projects.find(item => item.id === projectId);
+  if (project?.remote) {
+    const researchWork = nodes.find(node => getWorkspaceKey(node) === 'research');
+    try {
+      const saved = await Promise.all(selected.map(task => dataRequest(`/v1/projects/${projectId}/tasks`, { method:'POST', body:{
+        work_id:researchWork?.remote ? researchWork.id : null, title:task.title, detail:task.detail,
+        owner_name:task.owner, due_at:new Date().toISOString().slice(0,10), priority:task.priority.toLowerCase(), status:'todo'
+      } })));
+      projectPreviewTasks[projectId] = saved.map(item => taskFromRemote(item.task));
+    } catch (error) {
+      console.warn('Remote Task storage is unavailable; keeping this Project usable locally.', error);
+      projectPreviewTasks[projectId] = selected.map(task => ({ ...task, remote:false, taskStatus:'todo', reviewer:'未設定', history:[{ at:new Date().toISOString(), action:'created', actor:task.owner }] }));
+    }
+  } else projectPreviewTasks[projectId] = selected.map(task => ({ ...task, taskStatus:'todo', reviewer:'未設定', history:[{ at:new Date().toISOString(), action:'created', actor:task.owner }] }));
+  saveProjectTasks();
   $('taskProposalDialog').close();
   pendingTaskProjectId = null;
   updateTaskLauncher();
@@ -747,9 +782,22 @@ function renderTaskPreview() {
   const visible = scoped.filter(task => taskView === 'today' ? ['today','review'].includes(task.status) : task.status === taskView);
   $('myTasksKicker').textContent = taskScope === 'work' ? `${workDisplayName(nodes.find(item => item.id === activeWorkspaceNodeId) || { name:'Work' })} · TASKS` : 'MY TASKS';
   $('myTasksTitle').textContent = taskScope === 'work' ? 'このWorkのタスク' : '今日のタスク';
-  $('myTaskList').innerHTML = visible.length ? visible.map(task => `<article class="my-task-card ${task.completed ? 'completed' : ''}" data-task-id="${task.id}"><button class="task-check" aria-label="完了にする">${task.completed ? '✓' : ''}</button><div><span>${escapeHtml(task.project)} · ${escapeHtml(task.work)}</span><b>${escapeHtml(task.title)}</b><p>${escapeHtml(task.detail)}</p><small>${escapeHtml(task.due)} · ${escapeHtml(task.owner)}</small></div><em class="priority-${task.priority.toLowerCase()}">${escapeHtml(task.priority)}</em></article>`).join('') : '<div class="task-empty">該当するTaskはありません。</div>';
+  $('myTaskList').innerHTML = visible.length ? visible.map(task => `<article class="my-task-card ${task.completed ? 'completed' : ''}" data-task-id="${task.id}"><button class="task-check" aria-label="完了にする">${task.completed ? '✓' : ''}</button><div><span>${escapeHtml(task.project)} · ${escapeHtml(task.work)}</span><b>${escapeHtml(task.title)}</b><p>${escapeHtml(task.detail)}${task.blockedReason ? `<strong class="task-block-reason">Block · ${escapeHtml(task.blockedReason)}</strong>` : ''}<i class="task-reviewer">Reviewer · ${escapeHtml(task.reviewer || '未設定')} ／ Status · ${escapeHtml(task.taskStatus || task.status)}</i></p><small>${escapeHtml(task.due)} · ${escapeHtml(task.owner)}</small></div><em class="priority-${task.priority.toLowerCase()}">${escapeHtml(task.priority)}</em></article>`).join('') : '<div class="task-empty">該当するTaskはありません。</div>';
   document.querySelectorAll('.my-task-card').forEach(card => { card.onclick = event => { if (!event.target.closest('.task-check')) card.classList.toggle('expanded'); }; });
-  document.querySelectorAll('.task-check').forEach(button => { button.onclick = event => { const card=event.currentTarget.closest('[data-task-id]'); taskPreviewState[card.dataset.taskId] = !taskPreviewState[card.dataset.taskId]; renderTaskPreview(); updateTaskLauncher(); }; });
+  document.querySelectorAll('.task-check').forEach(button => { button.onclick = async event => {
+    event.stopPropagation();
+    const taskId=event.currentTarget.closest('[data-task-id]').dataset.taskId;
+    const task=previewTasks().find(item => item.id === taskId);
+    if (!task) return;
+    task.completed = !task.completed;
+    task.taskStatus = task.completed ? 'completed' : 'todo';
+    taskPreviewState[taskId] = task.completed;
+    saveProjectTasks(); renderTaskPreview(); updateTaskLauncher();
+    if (task.remote) {
+      try { await dataRequest(`/v1/tasks/${task.id}`, { method:'PATCH', body:{ status:task.taskStatus, history_action:task.completed ? 'completed' : 'reopened', actor_name:signedInUser?.name || 'Mina Rho' } }); }
+      catch (error) { task.completed=!task.completed; task.taskStatus=task.completed?'completed':'todo'; saveProjectTasks(); renderTaskPreview(); updateTaskLauncher(); alert(error.message); }
+    }
+  }; });
   document.querySelectorAll('[data-task-view]').forEach(button => button.classList.toggle('active', button.dataset.taskView === taskView));
 }
 
