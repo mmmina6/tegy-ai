@@ -160,6 +160,8 @@ let taskScope = 'mine';
 const taskPreviewState = {};
 const projectPreviewTasks = loadProjectPreviewTasks();
 let pendingTaskProjectId = null;
+let pendingTaskSuggestions = [];
+let pendingTaskAppend = false;
 
 function loadProjectPreviewTasks() {
   try { return JSON.parse(localStorage.getItem('tegy-preview-tasks') || '{}'); }
@@ -735,36 +737,60 @@ function suggestedResearchTasks(projectId) {
   ];
 }
 
-function openTaskProposal(projectId) {
+function suggestedWorkTasks(projectId, work) {
+  const projectName = projects.find(item => item.id === projectId)?.name || 'Project';
+  const key = getWorkspaceKey(work);
+  const templates = {
+    script:[['Campaign Briefと用途を確認','High','媒体、尺、目的、CTA、使用可能な表現を確認します。'],['生成Scriptをレビュー','High','Hook、構成、根拠、ブランド表現を確認します。'],['Approved Scriptを確定','Medium','Reviewerの承認後、次のImage／Video Workへ渡します。']],
+    shadow:[['Channel Dataを準備','High','Analytics、投稿履歴、警告・Copyright情報を揃えます。'],['Health／SEO Auditを確認','High','推測と確認済みEvidenceを分けて監査します。'],['Action Planを承認','Medium','改善施策、担当者、期限、Monitoring指標を決めます。']],
+    animation:[['Creative BriefとStudio Modeを確認','High','Short／Series、尺、画風、人物固定の有無を決めます。'],['Character・Sceneをレビュー','High','人物、衣装、背景、Style consistencyを確認します。'],['Director Reviewを実施','Medium','カット、音声、字幕、Final deliveryを承認します。']],
+    video:[['Video Briefと素材を確認','High','生成・支給素材・撮影素材の使用区分を決めます。'],['Edit v1をレビュー','High','構成、字幕、音声、媒体Safe Areaを確認します。'],['Final Deliverableを承認','Medium','書き出し仕様と納品ファイルを確認します。']],
+    operations:[['Content Calendarを作成','High','公開日、媒体、担当、承認状態を設定します。'],['公開前確認を実施','High','Title、Description、Thumbnail、URLを確認します。'],['Performance Reportを更新','Medium','公開後データをResearchと次回制作へ戻します。']],
+    research:[['調査範囲を確認','High','会社、商品、市場、競合、広告、Organic、Policyを確認します。'],['Evidenceを人工確認','High','出典URLと広告利用可能な根拠を確認します。'],['Research Reportを承認','Medium','顧客会議用の方向性と次のWorkを決めます。']]
+  };
+  return (templates[key] || templates.research).map((entry,index) => ({ id:`${projectId}-${work.id}-task-${index}`, project:projectName, work:workDisplayName(work), workId:work.id, title:entry[0], due:index === 0 ? '今日' : '期限未設定', priority:entry[1], status:index === 2 ? 'review' : 'today', taskStatus:index === 2 ? 'review' : 'todo', owner:'Mina Rho', reviewer:index === 2 ? '未設定' : '', detail:entry[2] }));
+}
+
+function openTaskProposal(projectId, suggestions = null, append = false) {
   pendingTaskProjectId = projectId;
+  pendingTaskSuggestions = suggestions || suggestedResearchTasks(projectId);
+  pendingTaskAppend = append;
   const project = projects.find(item => item.id === projectId);
   $('taskProposalProject').textContent = project?.name || 'New Project';
-  $('taskProposalList').innerHTML = suggestedResearchTasks(projectId).map((task,index) => `<label><input type="checkbox" value="${index}" checked><span class="proposal-check">✓</span><div><small>${escapeHtml(task.work)} · ${escapeHtml(task.due)}</small><b>${escapeHtml(task.title)}</b><p>${escapeHtml(task.detail)}</p></div><em>${escapeHtml(task.priority)}</em></label>`).join('');
+  $('taskProposalDialog').querySelector('header h2').textContent = append ? 'このWorkのTaskを確認' : '最初のTaskを確認';
+  $('taskProposalDialog').querySelector('header p').innerHTML = `<b id="taskProposalProject">${escapeHtml(project?.name || 'New Project')}</b> ${append ? 'の新しいWorkからTask候補を作成しました。必要なものだけ選択してください。' : 'の相談内容から、Research開始時のTask候補を作成しました。必要なものだけ選択してください。'}`;
+  $('taskProposalList').innerHTML = pendingTaskSuggestions.map((task,index) => `<label><input type="checkbox" value="${index}" checked><span class="proposal-check">✓</span><div><small>${escapeHtml(task.work)} · ${escapeHtml(task.due)}</small><b>${escapeHtml(task.title)}</b><p>${escapeHtml(task.detail)}</p></div><em>${escapeHtml(task.priority)}</em></label>`).join('');
   $('taskProposalDialog').showModal();
 }
 
 async function confirmTaskProposal() {
   if (!pendingTaskProjectId) return;
-  const tasks = suggestedResearchTasks(pendingTaskProjectId);
+  const tasks = pendingTaskSuggestions;
   const selected = [...document.querySelectorAll('#taskProposalList input:checked')].map(input => tasks[Number(input.value)]);
   const projectId = pendingTaskProjectId;
   const project = projects.find(item => item.id === projectId);
   if (project?.remote) {
-    const researchWork = nodes.find(node => getWorkspaceKey(node) === 'research');
     try {
       const saved = await Promise.all(selected.map(task => dataRequest(`/v1/projects/${projectId}/tasks`, { method:'POST', body:{
-        work_id:researchWork?.remote ? researchWork.id : null, title:task.title, detail:task.detail,
+        work_id:task.workId || nodes.find(node => getWorkspaceKey(node) === 'research')?.id || null, title:task.title, detail:task.detail,
         owner_name:task.owner, due_at:new Date().toISOString().slice(0,10), priority:task.priority.toLowerCase(), status:'todo'
       } })));
-      projectPreviewTasks[projectId] = saved.map(item => taskFromRemote(item.task));
+      const savedTasks = saved.map(item => taskFromRemote(item.task));
+      projectPreviewTasks[projectId] = pendingTaskAppend ? [...(projectPreviewTasks[projectId] || []), ...savedTasks] : savedTasks;
     } catch (error) {
       console.warn('Remote Task storage is unavailable; keeping this Project usable locally.', error);
-      projectPreviewTasks[projectId] = selected.map(task => ({ ...task, remote:false, taskStatus:'todo', reviewer:'未設定', history:[{ at:new Date().toISOString(), action:'created', actor:task.owner }] }));
+      const localTasks = selected.map(task => ({ ...task, remote:false, taskStatus:task.taskStatus || 'todo', reviewer:task.reviewer || '未設定', history:[{ at:new Date().toISOString(), action:'created', actor:task.owner }] }));
+      projectPreviewTasks[projectId] = pendingTaskAppend ? [...(projectPreviewTasks[projectId] || []), ...localTasks] : localTasks;
     }
-  } else projectPreviewTasks[projectId] = selected.map(task => ({ ...task, taskStatus:'todo', reviewer:'未設定', history:[{ at:new Date().toISOString(), action:'created', actor:task.owner }] }));
+  } else {
+    const localTasks = selected.map(task => ({ ...task, taskStatus:task.taskStatus || 'todo', reviewer:task.reviewer || '未設定', history:[{ at:new Date().toISOString(), action:'created', actor:task.owner }] }));
+    projectPreviewTasks[projectId] = pendingTaskAppend ? [...(projectPreviewTasks[projectId] || []), ...localTasks] : localTasks;
+  }
   saveProjectTasks();
   $('taskProposalDialog').close();
   pendingTaskProjectId = null;
+  pendingTaskSuggestions = [];
+  pendingTaskAppend = false;
   updateTaskLauncher();
   openTaskPreview('mine');
 }
@@ -2118,6 +2144,8 @@ async function saveQuickWorkToProject(event) {
 
 async function addAgent(name) {
   if (!selectedProject) { startQuickWork(name); return; }
+  const aliases = { 'AI Script':'Script Agent', 'Script':'Script Agent', 'Shadow Ban / SEO':'ShadowBan Agent', 'Shadow Ban':'ShadowBan Agent', 'Anime':'AI Anime Agent', 'Video':'Video Agent', 'Operations':'Operations Agent', 'Research':'Research Agent' };
+  name = aliases[name] || name;
   const map = { 'Research Agent': ['◎', 'mint-bg'], 'Script Agent': ['✎', 'cyan-bg'], 'AI Anime Agent': ['▷', 'pink-bg'], 'Animation Agent': ['▷', 'pink-bg'], 'ShadowBan Agent': ['⬡', 'orange-bg'], 'Video Agent': ['▧', 'pink-bg'], 'Operations Agent': ['⌘', 'mint-bg'] };
   const [icon, cls] = map[name] || ['✦', 'cyan-bg'];
   let newWork = { id: `n${Date.now()}`, name, icon, cls, x: 38 + Math.random() * 28, y: 45 + Math.random() * 22, status: 'Ready', type: 'progress', detail: '新しいWorkを追加しました', progress: 0 };
@@ -2132,6 +2160,7 @@ async function addAgent(name) {
   saveProjectWorks();
   renderNodes();
   openFullWorkspace(newWork.id);
+  openTaskProposal(selectedProject, suggestedWorkTasks(selectedProject, newWork), true);
 }
 
 function revealAddWork() {
