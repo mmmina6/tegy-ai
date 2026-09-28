@@ -154,6 +154,7 @@ const animeOutputs = loadAnimeOutputs();
 const videoPlans = JSON.parse(localStorage.getItem('tegy-video-plans') || '{}');
 const operationInsights = {};
 const operationsContentCache = {};
+const localOperations = loadLocalOperations();
 let operationsView = 'list';
 let operationsPage = 1;
 let taskView = 'today';
@@ -163,6 +164,15 @@ const projectPreviewTasks = loadProjectPreviewTasks();
 let pendingTaskProjectId = null;
 let pendingTaskSuggestions = [];
 let pendingTaskAppend = false;
+
+function loadLocalOperations() {
+  try { return JSON.parse(localStorage.getItem('tegy-local-operations') || '{}'); }
+  catch { return {}; }
+}
+
+function saveLocalOperations() {
+  localStorage.setItem('tegy-local-operations', JSON.stringify(localOperations));
+}
 
 function loadProjectPreviewTasks() {
   try { return JSON.parse(localStorage.getItem('tegy-preview-tasks') || '{}'); }
@@ -697,7 +707,7 @@ function openFullWorkspace(id) {
   $('fullWorkspaceIcon').className = `workspace-agent-icon ${node.cls}`;
   const workspaceKey = getWorkspaceKey(node);
   $('workTaskCount').textContent = String(tasksForCurrentContext(workspaceKey).filter(task => task.status !== 'completed').length);
-  $('runWorkspaceAgent').textContent = workspaceKey === 'research' ? '↻ Run Research' : workspaceKey === 'script' ? '↻ Generate Script' : workspaceKey === 'video' ? '✓ Save Plan' : '↻ Run Agent';
+  $('runWorkspaceAgent').textContent = workspaceKey === 'research' ? '↻ Run Research' : workspaceKey === 'script' ? '↻ Generate Script' : workspaceKey === 'video' ? '✓ Save Plan' : workspaceKey === 'operations' ? '↻ Sync Operations' : workspaceKey === 'manager' ? '✦ Plan Next Tasks' : '↻ Run Agent';
   const stepMap = {
     research: getActiveResearchItems().map((item,index) => `${String(index + 1).padStart(2,'0')}. ${item.title}`),
     script: ['01. Campaign Brief','02. Persona / Viewer','03. Hook Library','04. Script Editor','05. Scenes / 字コンテ','06. Visual Storyboard / 絵コンテ','07. Versions'],
@@ -921,6 +931,9 @@ function renderDeliveryWorkspace(key, node) {
     document.querySelectorAll('[data-export-index]').forEach(button => { button.onclick = () => exportVideoPackage(Number(button.dataset.exportIndex)); });
   }
   if (key === 'operations') loadOperationsWorkspace();
+  if (['operations','brand','manager'].includes(key)) {
+    document.querySelectorAll('[data-export-index]').forEach(button => { button.onclick = () => exportGenericWorkspace(key, Number(button.dataset.exportIndex)); });
+  }
 }
 
 function prepareAgentSections(key, navItems) {
@@ -929,8 +942,8 @@ function prepareAgentSections(key, navItems) {
   const selectorMap = {
     animation: [['.anime-studio-home',0],['.anime-writer-room',1],['.anime-design-studio',2],['.anime-scene-board',3],['.anime-voice-motion',4],['.anime-director-cut',5],['.anime-studio-delivery',6]],
     shadow: [['#shadowAuditForm',0],['.audit-result',1],['.audit-empty',1]],
-    video: [['.video-preview',0],['.video-meta',1],['.timeline',2]],
-    operations: [['.calendar-head',0],['.content-calendar',1],['.performance-row',4]],
+    video: [['#videoProductionForm',0],['.video-meta',1],['.video-preview',3]],
+    operations: [['.operations-control-note',0],['.operations-input',1],['.operations-content-list',2],['.performance-row',4],['.operations-learning',5]],
     manager: [['.manager-summary',0],['.dependency-map',1]],
     brand: [['.brand-summary',0],['.brand-columns',1]]
   };
@@ -976,7 +989,7 @@ function deliveryCenterMarkup(type) {
 }
 
 function operationsWorkspaceMarkup() {
-  return `<div class="operations-board live-operations"><section class="operations-control-note"><div><small>CHANNEL OPERATIONS</small><h2>公開予定と制作進行をTEGYで統括</h2><p>予約公開の実行は既存の外部ツールを使用し、TEGYでは担当・承認・予定日時・公開結果を一元管理します。</p></div><button>外部予約ツールを開く ↗</button></section><section class="operations-input"><form id="contentItemForm"><small>CONTENT CALENDAR</small><h2>公開予定を追加</h2><div><input name="title" required placeholder="動画タイトル"><select name="platform"><option>TikTok</option><option>Instagram</option><option>YouTube</option><option>Meta Ads</option></select><input name="scheduled_at" type="datetime-local"><button>追加</button></div></form><form id="performanceForm"><small>PERFORMANCE IMPORT</small><h2>公開結果を記録</h2><div><select name="content_item_id" id="performanceContentSelect" required><option value="">コンテンツを選択</option></select><input name="impressions" type="number" min="0" placeholder="Impressions"><input name="views" type="number" min="0" placeholder="Views"><input name="engagements" type="number" min="0" placeholder="Engagements"><input name="conversions" type="number" min="0" placeholder="Conversions"><button>保存</button></div></form></section><div class="performance-row" id="operationsTotals"><article><small>VIEWS</small><b>—</b></article><article><small>ENGAGEMENTS</small><b>—</b></article><article><small>CONVERSIONS</small><b>—</b></article></div><section class="operations-content-list"><header><small>PUBLISHING & PERFORMANCE</small><h2>Content Library</h2></header><div id="operationsContentList"><p>読み込み中...</p></div></section><section class="operations-learning"><header><small>FEEDBACK LOOP</small><h2>次のResearch／Scriptへの改善点</h2></header><div id="operationsInsightList"><p>Metricsから学習内容を生成します。</p></div></section></div>`;
+  return `<div class="operations-board live-operations"><section class="operations-control-note"><div><small>CHANNEL OPERATIONS</small><h2>公開予定と制作進行をTEGYで統括</h2><p>予約公開の実行は既存の外部ツールを使用し、TEGYでは担当・承認・予定日時・公開結果を一元管理します。</p></div><button id="openExternalScheduler" type="button">外部予約ツールを設定 ↗</button></section><section class="operations-input"><form id="contentItemForm"><small>CONTENT CALENDAR</small><h2>公開予定を追加</h2><div><input name="title" required placeholder="動画タイトル"><select name="platform"><option>TikTok</option><option>Instagram</option><option>YouTube</option><option>Meta Ads</option></select><input name="scheduled_at" type="datetime-local"><input name="owner" placeholder="担当者" value="Mina Rho"><select name="status"><option value="planned">予定</option><option value="review">確認待ち</option><option value="published">公開済み</option></select><button>追加</button></div></form><form id="performanceForm"><small>PERFORMANCE IMPORT</small><h2>公開結果を記録</h2><div><select name="content_item_id" id="performanceContentSelect" required><option value="">コンテンツを選択</option></select><input name="impressions" type="number" min="0" placeholder="Impressions"><input name="views" type="number" min="0" placeholder="Views"><input name="engagements" type="number" min="0" placeholder="Engagements"><input name="conversions" type="number" min="0" placeholder="Conversions"><button>保存</button></div></form></section><div class="performance-row" id="operationsTotals"><article><small>VIEWS</small><b>—</b></article><article><small>ENGAGEMENTS</small><b>—</b></article><article><small>CONVERSIONS</small><b>—</b></article></div><section class="operations-content-list"><header><small>PUBLISHING & PERFORMANCE</small><h2>Content Library</h2></header><div id="operationsContentList"><p>読み込み中...</p></div></section><section class="operations-learning"><header><small>FEEDBACK LOOP</small><h2>次のResearch／Scriptへの改善点</h2></header><div id="operationsInsightList"><p>Metricsから学習内容を生成します。</p></div></section></div>`;
 }
 
 function videoWorkspaceMarkup() {
@@ -1009,24 +1022,28 @@ function saveVideoProductionPlan(form, node) {
 
 async function loadOperationsWorkspace() {
   const project = projects.find(item => item.id === selectedProject);
-  if (!project?.remote) return;
   try {
-    const payload = await dataRequest(`/v1/projects/${selectedProject}/operations`);
+    const local = localOperations[selectedProject] || { content:[], insights:[] };
+    const payload = project?.remote
+      ? await dataRequest(`/v1/projects/${selectedProject}/operations`)
+      : { content:local.content || [], insights:local.insights || [], totals:(local.content || []).reduce((sum,item) => ({ views:sum.views + Number(item.views || 0), engagements:sum.engagements + Number(item.engagements || 0), conversions:sum.conversions + Number(item.conversions || 0) }), { views:0, engagements:0, conversions:0 }) };
     operationsContentCache[selectedProject] = payload.content || [];
     operationsPage = Math.max(1, operationsPage);
-    operationInsights[selectedProject] = payload.insights.map(item => ({ type:item.insight_type, summary:item.summary, action:item.recommended_action }));
+    operationInsights[selectedProject] = (payload.insights || []).map(item => ({ type:item.insight_type || item.type, summary:item.summary, action:item.recommended_action || item.action }));
     $('operationsTotals').innerHTML = [['VIEWS',payload.totals.views],['ENGAGEMENTS',payload.totals.engagements],['CONVERSIONS',payload.totals.conversions]].map(([label,value])=>`<article><small>${label}</small><b>${Number(value || 0).toLocaleString()}</b></article>`).join('');
     $('performanceContentSelect').innerHTML = '<option value="">Select content</option>' + payload.content.map(item=>`<option value="${escapeHtml(item.id)}">${escapeHtml(item.title)} · ${escapeHtml(item.platform)}</option>`).join('');
     const contentSection = document.querySelector('.operations-content-list');
     if (contentSection && !contentSection.querySelector('.content-library-tools')) contentSection.querySelector('header').insertAdjacentHTML('afterend', `<div class="content-library-tools"><input id="operationsContentSearch" placeholder="タイトル・番号を検索"><select id="operationsPlatformFilter"><option value="">すべての媒体</option><option>YouTube</option><option>TikTok</option><option>Instagram</option><option>Meta Ads</option></select><select id="operationsStatusFilter"><option value="">すべての状態</option><option value="planned">予定</option><option value="review">確認待ち</option><option value="published">公開済み</option></select><button data-operations-view="list">List</button><button data-operations-view="calendar">Calendar</button></div>`);
     renderOperationsContent();
-    $('operationsInsightList').innerHTML = payload.insights.length ? payload.insights.map(item=>`<article><span>${escapeHtml(item.insight_type)}</span><div><b>${escapeHtml(item.summary)}</b><p>${escapeHtml(item.recommended_action)}</p></div></article>`).join('') : '<p>Metricsから学習内容を生成します。</p>';
+    $('operationsInsightList').innerHTML = payload.insights.length ? payload.insights.map(item=>`<article><span>${escapeHtml(item.insight_type || item.type)}</span><div><b>${escapeHtml(item.summary)}</b><p>${escapeHtml(item.recommended_action || item.action)}</p></div></article>`).join('') : '<p>Performanceを保存すると、次の制作に戻す改善点を表示します。</p>';
     $('contentItemForm').onsubmit = createOperationsContent;
     $('performanceForm').onsubmit = saveOperationsPerformance;
     $('operationsContentSearch').oninput = () => { operationsPage = 1; renderOperationsContent(); };
     $('operationsPlatformFilter').onchange = () => { operationsPage = 1; renderOperationsContent(); };
     $('operationsStatusFilter').onchange = () => { operationsPage = 1; renderOperationsContent(); };
     document.querySelectorAll('[data-operations-view]').forEach(button => { button.onclick = () => { operationsView = button.dataset.operationsView; renderOperationsContent(); }; });
+    const scheduler = $('openExternalScheduler');
+    if (scheduler) scheduler.onclick = openExternalScheduler;
   } catch (error) { $('operationsContentList').innerHTML = `<p>${escapeHtml(error.message)}</p>`; }
 }
 
@@ -1054,18 +1071,47 @@ async function createOperationsContent(event) {
   const node = nodes.find(item => item.id === activeWorkspaceNodeId);
   const body = Object.fromEntries(new FormData(event.currentTarget));
   body.work_id = node?.remote ? node.id : null;
-  await dataRequest(`/v1/projects/${selectedProject}/content-items`, { method:'POST', body });
+  if (node?.remote) await dataRequest(`/v1/projects/${selectedProject}/content-items`, { method:'POST', body });
+  else {
+    const store = localOperations[selectedProject] ||= { content:[], insights:[] };
+    store.content.unshift({ id:`content-${Date.now()}`, ...body, status:body.status || 'planned', impressions:0, views:0, engagements:0, conversions:0 });
+    saveLocalOperations();
+  }
   event.currentTarget.reset();
   await loadOperationsWorkspace();
+  $('workspaceSaveStatus').textContent = '✓ 公開予定を保存しました';
 }
 
 async function saveOperationsPerformance(event) {
   event.preventDefault();
   const body = Object.fromEntries(new FormData(event.currentTarget));
-  await dataRequest(`/v1/projects/${selectedProject}/performance`, { method:'POST', body });
+  const node = nodes.find(item => item.id === activeWorkspaceNodeId);
+  if (node?.remote) await dataRequest(`/v1/projects/${selectedProject}/performance`, { method:'POST', body });
+  else {
+    const store = localOperations[selectedProject] ||= { content:[], insights:[] };
+    const item = store.content.find(entry => entry.id === body.content_item_id);
+    if (!item) throw new Error('対象コンテンツが見つかりません。');
+    ['impressions','views','engagements','conversions'].forEach(field => { item[field] = Number(body[field] || 0); });
+    item.status = 'published';
+    const rate = item.views ? item.engagements / item.views : 0;
+    store.insights = [{ type:'Performance', summary:`${item.title}：${Number(item.views).toLocaleString()} views、Engagement rate ${(rate * 100).toFixed(1)}%`, action:rate >= .05 ? '反応の良いHookと構成を次回Scriptへ再利用します。' : 'Hook、Thumbnail、冒頭3秒を見直して次回案を作成します。' }];
+    saveLocalOperations();
+  }
   event.currentTarget.reset();
   await loadOperationsWorkspace();
   $('workspaceSaveStatus').textContent = '✓ Performance saved · Next actions updated';
+}
+
+function openExternalScheduler() {
+  const key = `tegy-scheduler-url:${selectedProject}`;
+  const current = localStorage.getItem(key) || '';
+  const url = prompt('予約投稿ツールのURLを入力してください', current);
+  if (url === null) return;
+  if (!url.trim()) { localStorage.removeItem(key); $('workspaceSaveStatus').textContent = '予約投稿ツールURLを解除しました'; return; }
+  try { new URL(url); }
+  catch { $('workspaceSaveStatus').textContent = '正しいURLを入力してください'; return; }
+  localStorage.setItem(key, url.trim());
+  window.open(url.trim(), '_blank', 'noopener');
 }
 
 function animeShotList(result) {
@@ -1103,8 +1149,10 @@ async function openGenerationMonitor() {
     $('generationSummary').innerHTML = usage.summary.length ? usage.summary.map(item => `<article><small>${escapeHtml(item.media_type)} · ${escapeHtml(item.provider)}</small><b>${item.job_count} jobs</b><span>${Number(item.usage_units || 0)} units · $${Number(item.tracked_cost_usd || 0).toFixed(2)} tracked</span></article>`).join('') : '<p>No generation usage recorded for this Project.</p>';
     $('generationJobList').innerHTML = queue.jobs.length ? queue.jobs.map(job => `<article><span class="job-status ${escapeHtml(job.status)}">${escapeHtml(job.status)}</span><div><b>${escapeHtml(job.media_type.toUpperCase())} · ${escapeHtml(job.model || job.provider)}</b><small>${escapeHtml(new Date(`${job.created_at}Z`).toLocaleString('ja-JP'))}</small></div><em>${Number(job.usage_units || 0)} unit</em></article>`).join('') : '<p>No queued or completed generation jobs.</p>';
   } catch (error) {
-    $('generationSummary').innerHTML = `<p>${escapeHtml(error.message)}</p>`;
-    $('generationJobList').innerHTML = '';
+    const imageCount = Object.keys(storyboardImages[selectedProject] || {}).length;
+    const videoEntries = Object.entries(generatedVideos).filter(([key]) => key.startsWith(`${selectedProject}:`));
+    $('generationSummary').innerHTML = `<article><small>IMAGE · Browser storage</small><b>${imageCount} assets</b><span>Project内で生成・取込済み</span></article><article><small>VIDEO · Browser storage</small><b>${videoEntries.length} clips</b><span>Project内で生成済み</span></article>`;
+    $('generationJobList').innerHTML = videoEntries.length ? videoEntries.map(([key,item]) => `<article><span class="job-status completed">completed</span><div><b>VIDEO · ${escapeHtml(item.model || 'Video model')}</b><small>${escapeHtml(key.split(':').at(-1))}</small></div><em>local</em></article>`).join('') : '<p>生成履歴はまだありません。外部DB接続後は利用量とCostも表示します。</p>';
   }
 }
 
@@ -1656,6 +1704,26 @@ function exportVideoPackage(index) {
   downloadFile(`${safeFileName(project?.name)}-video-production.json`, JSON.stringify({ project:project?.name, exportedAt:new Date().toISOString(), plan }, null, 2), 'application/json');
 }
 
+function exportGenericWorkspace(key, index) {
+  const project = projects.find(item => item.id === selectedProject);
+  if (key === 'operations') {
+    const content = operationsContentCache[selectedProject] || [];
+    if (index === 1) {
+      const rows = [['Title','Platform','Scheduled at','Owner','Status','Impressions','Views','Engagements','Conversions'],...content.map(item=>[item.title,item.platform,item.scheduled_at || '',item.owner || '',item.status,item.impressions || 0,item.views || 0,item.engagements || 0,item.conversions || 0])];
+      return downloadFile(`${safeFileName(project?.name)}-content-calendar.csv`,`\ufeff${rows.map(row=>row.map(csvCell).join(',')).join('\n')}`,'text/csv;charset=utf-8');
+    }
+    const totals = content.reduce((sum,item)=>({ views:sum.views+Number(item.views||0), engagements:sum.engagements+Number(item.engagements||0), conversions:sum.conversions+Number(item.conversions||0) }),{views:0,engagements:0,conversions:0});
+    const popup = window.open('', '_blank');
+    if (!popup) return alert('Report用ウィンドウを開けませんでした。');
+    popup.document.write(`<title>${escapeHtml(project?.name || 'Project')} · Operations Report</title><style>body{font-family:Arial,sans-serif;padding:36px;color:#17191d}button{padding:10px 15px}.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.summary div{border:1px solid #ddd;padding:18px}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:11px}@media print{button{display:none}}</style><button onclick="print()">Print / Save PDF</button><h1>${escapeHtml(project?.name || 'Project')} · Operations Report</h1><div class="summary"><div><small>VIEWS</small><h2>${totals.views.toLocaleString()}</h2></div><div><small>ENGAGEMENTS</small><h2>${totals.engagements.toLocaleString()}</h2></div><div><small>CONVERSIONS</small><h2>${totals.conversions.toLocaleString()}</h2></div></div><table><tr><th>Content</th><th>Platform</th><th>Schedule</th><th>Status</th><th>Views</th></tr>${content.map(item=>`<tr><td>${escapeHtml(item.title)}</td><td>${escapeHtml(item.platform)}</td><td>${escapeHtml(item.scheduled_at || '')}</td><td>${escapeHtml(statusDisplay(item.status))}</td><td>${Number(item.views || 0).toLocaleString()}</td></tr>`).join('')}</table>`);
+    popup.document.close();
+    return;
+  }
+  const data = projectDeliveryPackage();
+  if (index === 0) return exportProject('pdf');
+  downloadFile(`${safeFileName(project?.name)}-${key}-package.json`, JSON.stringify({ project:data?.project, work:(data?.works || []).find(item=>getWorkspaceKey(item)===key), exportedAt:new Date().toISOString() }, null, 2), 'application/json');
+}
+
 function safeFileName(value) { return String(value || 'tegy-project').trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-').toLowerCase(); }
 
 function projectDeliveryPackage() {
@@ -1840,8 +1908,19 @@ async function runActiveWorkspaceAgent() {
     if (form) saveVideoProductionPlan(form, node);
     return;
   }
+  if (key === 'operations') {
+    await loadOperationsWorkspace();
+    $('workspaceSaveStatus').textContent = '✓ Content CalendarとPerformanceを同期しました';
+    return;
+  }
+  if (key === 'manager') {
+    const suggestions = nodes.filter(item => getWorkspaceKey(item) !== 'manager').flatMap(work => suggestedWorkTasks(selectedProject, work).slice(0, 1));
+    openTaskProposal(selectedProject, suggestions.length ? suggestions : suggestedResearchTasks(selectedProject), true);
+    $('workspaceSaveStatus').textContent = '✓ 次のTask候補を作成しました';
+    return;
+  }
   if (key !== 'research') {
-    $('workspaceSaveStatus').textContent = key === 'script' ? 'AI Script は下部チャットから実行できます' : 'この Agent の実行コードは次の開発フェーズです';
+    $('workspaceSaveStatus').textContent = 'このWorkは保存・書き出しに対応しています';
     return;
   }
   const button = $('runWorkspaceAgent');

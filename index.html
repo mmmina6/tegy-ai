@@ -16,16 +16,15 @@
       <img src="./tegy-logo-horizontal.png" alt="TEGY" />
       <p class="auth-kicker">CREATIVE INTELLIGENCE PLATFORM</p>
       <h1>TEGY にログイン</h1>
-      <p class="auth-intro">AI Creative Workspace を続けるにはログインしてください。</p>
-      <button class="google-signin" id="authGoogle" type="button"><span>G</span>Google で続行</button>
-      <div class="auth-divider"><span>または</span></div>
+      <p class="auth-intro">会社メールアドレスでログインしてください。アカウントはTEGY管理者が発行します。</p>
+      <button class="google-signin hidden" id="authGoogle" type="button" aria-hidden="true" tabindex="-1"><span>G</span>Google で続行</button>
       <form id="authEmailForm">
-        <label>メールアドレス<input id="authEmail" type="email" autocomplete="email" required placeholder="name@company.com" /></label>
+        <label>会社メールアドレス<input id="authEmail" type="email" autocomplete="email" required placeholder="name@tegy.co.jp" /></label>
         <label>パスワード<input id="authPassword" type="password" autocomplete="current-password" minlength="6" required placeholder="6文字以上" /></label>
         <button class="auth-submit" id="authSubmit" type="submit">ログイン</button>
       </form>
       <button class="auth-link" id="authReset" type="button">パスワードを忘れた場合</button>
-      <p class="auth-access-note">アカウントは TEGY 管理者が発行します。</p>
+      <p class="auth-access-note">個人メールアドレスではログインできません。</p>
       <p class="auth-message" id="authMessage" role="status"></p>
     </div>
   </section>
@@ -159,7 +158,7 @@
       <button data-project-export="excel"><span>▦</span><b>Excel</b><small>Brief・Work・Scenes・Research</small></button>
       <button data-project-export="pdf"><span>▣</span><b>PDF</b><small>会議・確認用レポート</small></button>
       <button data-project-export="json"><span>{ }</span><b>JSON</b><small>完全なProjectデータ</small></button>
-      <button data-project-export="bubble"><span>◉</span><b>泡泡糖</b><small>Workノード・依存関係</small></button>
+      <button data-project-export="bubble"><span>◉</span><b>Workflow Map</b><small>Workノード・依存関係</small></button>
     </div>
     <section class="delivery-manifest" id="deliveryManifest"></section>
   </dialog>
