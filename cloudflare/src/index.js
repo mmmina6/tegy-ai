@@ -82,7 +82,9 @@ async function getProject(env, projectId) {
   if (!project) return json({ error: "Project not found" }, 404);
   const { results: works = [] } = await env.DB.prepare(`SELECT * FROM works WHERE project_id = ? AND status != 'archived' ORDER BY updated_at DESC`).bind(projectId).all();
   const { results: tasks = [] } = await env.DB.prepare(`SELECT * FROM tasks WHERE project_id = ? AND status != 'cancelled' ORDER BY due_at IS NULL, due_at, updated_at DESC`).bind(projectId).all();
-  return json({ project: parseJsonFields(project), works: works.map(parseJsonFields), tasks:tasks.map(parseJsonFields) });
+  const { results: records = [] } = await env.DB.prepare(`SELECT * FROM workspace_records WHERE project_id = ? ORDER BY updated_at DESC`).bind(projectId).all();
+  const { results: assets = [] } = await env.DB.prepare(`SELECT * FROM media_assets WHERE project_id = ? ORDER BY updated_at DESC`).bind(projectId).all();
+  return json({ project: parseJsonFields(project), works: works.map(parseJsonFields), tasks:tasks.map(parseJsonFields), records:records.map(parseJsonFields), assets:assets.map(parseJsonFields) });
 }
 
 async function updateProject(request, env, projectId) {
@@ -340,6 +342,53 @@ async function addPerformance(request, env, projectId) {
   return json({ snapshot:await env.DB.prepare(`SELECT * FROM performance_snapshots WHERE id=?`).bind(id).first(), insight:await env.DB.prepare(`SELECT * FROM operation_insights WHERE id=?`).bind(insightId).first() },201);
 }
 
+async function workspaceRecords(request, env, projectId, url) {
+  if (request.method === "GET") {
+    const recordType = url.searchParams.get("record_type");
+    let sql = `SELECT * FROM workspace_records WHERE project_id=?`;
+    const bindings = [projectId];
+    if (recordType) { sql += ` AND record_type=?`; bindings.push(recordType); }
+    sql += ` ORDER BY updated_at DESC`;
+    const { results = [] } = await env.DB.prepare(sql).bind(...bindings).all();
+    return json({ records:results.map(parseJsonFields) });
+  }
+  const body = await bodyJson(request);
+  const missing = required(body, ["record_type", "record_key"]);
+  if (missing.length) return json({ error:`Missing: ${missing.join(", ")}` }, 400);
+  const existing = await env.DB.prepare(`SELECT id FROM workspace_records WHERE project_id=? AND record_type=? AND record_key=?`).bind(projectId,body.record_type,body.record_key).first();
+  const id = existing?.id || crypto.randomUUID();
+  await env.DB.prepare(`INSERT INTO workspace_records (id, project_id, work_id, record_type, record_key, content_json) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(project_id, record_type, record_key) DO UPDATE SET work_id=excluded.work_id, content_json=excluded.content_json, updated_at=datetime('now')`)
+    .bind(id,projectId,body.work_id || null,body.record_type,body.record_key,JSON.stringify(body.content || {})).run();
+  return json({ record:parseJsonFields(await env.DB.prepare(`SELECT * FROM workspace_records WHERE id=?`).bind(id).first()) }, existing ? 200 : 201);
+}
+
+async function mediaAssets(request, env, projectId) {
+  if (request.method === "GET") {
+    const { results = [] } = await env.DB.prepare(`SELECT * FROM media_assets WHERE project_id=? ORDER BY updated_at DESC`).bind(projectId).all();
+    return json({ assets:results.map(parseJsonFields) });
+  }
+  const body = await bodyJson(request);
+  const missing = required(body, ["asset_type"]);
+  if (missing.length) return json({ error:`Missing: ${missing.join(", ")}` }, 400);
+  const id = crypto.randomUUID();
+  await env.DB.prepare(`INSERT INTO media_assets (id, project_id, work_id, deliverable_id, scene_key, asset_type, source, storage_provider, storage_key, public_url, file_name, mime_type, model, review_status, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id,projectId,body.work_id || null,body.deliverable_id || null,body.scene_key || null,body.asset_type,body.source || "generated",body.storage_provider || null,body.storage_key || null,body.public_url || null,body.file_name || null,body.mime_type || null,body.model || null,body.review_status || "draft",JSON.stringify(body.metadata || {})).run();
+  return json({ asset:parseJsonFields(await env.DB.prepare(`SELECT * FROM media_assets WHERE id=?`).bind(id).first()) }, 201);
+}
+
+async function updateMediaAsset(request, env, assetId) {
+  if (request.method === "DELETE") {
+    const result = await env.DB.prepare(`DELETE FROM media_assets WHERE id=?`).bind(assetId).run();
+    return result.meta?.changes ? json({ deleted:true, id:assetId }) : json({ error:"Media asset not found" },404);
+  }
+  const body = await bodyJson(request) || {};
+  const current = await env.DB.prepare(`SELECT * FROM media_assets WHERE id=?`).bind(assetId).first();
+  if (!current) return json({ error:"Media asset not found" },404);
+  await env.DB.prepare(`UPDATE media_assets SET public_url=?, storage_provider=?, storage_key=?, file_name=?, mime_type=?, model=?, review_status=?, metadata_json=?, updated_at=datetime('now') WHERE id=?`)
+    .bind(body.public_url ?? current.public_url,body.storage_provider ?? current.storage_provider,body.storage_key ?? current.storage_key,body.file_name ?? current.file_name,body.mime_type ?? current.mime_type,body.model ?? current.model,body.review_status ?? current.review_status,JSON.stringify(body.metadata ?? JSON.parse(current.metadata_json || "{}")),assetId).run();
+  return json({ asset:parseJsonFields(await env.DB.prepare(`SELECT * FROM media_assets WHERE id=?`).bind(assetId).first()) });
+}
+
 function taskHistoryEntry(action, body = {}) {
   return { at:new Date().toISOString(), action, actor:body.actor_name || body.owner_name || "TEGY", status:body.status || null };
 }
@@ -401,6 +450,12 @@ async function route(request, env) {
   if (contentItemsMatch && request.method === "POST") return createContentItem(request, env, contentItemsMatch[1]);
   const performanceMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/performance$/);
   if (performanceMatch && request.method === "POST") return addPerformance(request, env, performanceMatch[1]);
+  const workspaceRecordsMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/workspace-records$/);
+  if (workspaceRecordsMatch && ["GET", "POST"].includes(request.method)) return workspaceRecords(request, env, workspaceRecordsMatch[1], url);
+  const mediaAssetsMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/media-assets$/);
+  if (mediaAssetsMatch && ["GET", "POST"].includes(request.method)) return mediaAssets(request, env, mediaAssetsMatch[1]);
+  const mediaAssetMatch = url.pathname.match(/^\/v1\/media-assets\/([^/]+)$/);
+  if (mediaAssetMatch && ["PATCH", "DELETE"].includes(request.method)) return updateMediaAsset(request, env, mediaAssetMatch[1]);
 
   const projectWorksMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/works$/);
   if (projectWorksMatch && request.method === "POST") return createWork(request, env, projectWorksMatch[1]);

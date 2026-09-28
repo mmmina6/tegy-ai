@@ -213,6 +213,62 @@ const connections = $('connections');
 const fullWorkspace = $('fullWorkspace');
 const organizationId = 'tegy';
 
+function openMediaCache() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) return reject(new Error('IndexedDB is unavailable.'));
+    const request = indexedDB.open('tegy-media-cache', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('assets', { keyPath:'key' });
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function cacheMediaAsset(key, value) {
+  try {
+    const database = await openMediaCache();
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction('assets', 'readwrite');
+      transaction.objectStore('assets').put({ key, value, updatedAt:new Date().toISOString() });
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+    });
+    database.close();
+  } catch (error) { console.warn('Media cache write failed:', error); }
+}
+
+async function restoreMediaCache() {
+  try {
+    const database = await openMediaCache();
+    const entries = await new Promise((resolve, reject) => {
+      const request = database.transaction('assets').objectStore('assets').getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+    database.close();
+    entries.forEach(entry => {
+      const [kind, projectId, ...parts] = entry.key.split(':');
+      const sceneKey = parts.join(':');
+      if (kind === 'image') { storyboardImages[projectId] ||= {}; storyboardImages[projectId][sceneKey] = entry.value; }
+      if (kind === 'video') generatedVideos[`${projectId}:${sceneKey}`] = entry.value;
+    });
+  } catch (error) { console.warn('Media cache restore failed:', error); }
+}
+
+async function registerMediaAsset({ projectId=selectedProject, workId=null, sceneKey, assetType, source='generated', value }) {
+  if (!projectId || !sceneKey || !value) return;
+  await cacheMediaAsset(`${assetType}:${projectId}:${sceneKey}`, value);
+  const project = projects.find(item => item.id === projectId);
+  if (!project?.remote) return;
+  try {
+    const result = await dataRequest(`/v1/projects/${projectId}/media-assets`, { method:'POST', body:{
+      work_id:workId, scene_key:sceneKey, asset_type:assetType, source,
+      public_url:value.url || '', file_name:value.fileName || '', mime_type:value.mimeType || '', model:value.model || '',
+      review_status:value.reviewStatus || 'review', metadata:{ operation:value.operation || '', cachedLocally:Boolean(value.dataUrl) }
+    } });
+    value.assetId = result.asset.id;
+  } catch (error) { console.warn('Media database sync failed:', error); }
+}
+
 async function dataRequest(path, options = {}) {
   const query = new URLSearchParams({ path, ...(options.query || {}) });
   const response = await fetch(`/api/data?${query}`, {
@@ -266,10 +322,6 @@ const researchItems = [
   { title: 'Market Persona & Insight', kicker: '07 · SHARED INSIGHT', description: '市場全体の需要、痛み、心理、Market Persona を統合し、全 Work で共有します。', insight: 'これは特定広告の Campaign Persona ではなく、Project に長期保存する Market Insight です。', columns: ['Market persona','Need / pain','Underlying insight','Evidence'], rows: [['Primary market persona','','',''],['Secondary market persona','','',''],['Key market insight','','','']] },
   { title: 'Strategy Summary', kicker: '08 · DIRECTION', description: '調査結果から、クライアント会議で確認する方向性と次の Work を整理します。', insight: 'Research の最終出力を PDF と共有データにまとめます。', columns: ['Priority','Strategic direction','Reason','Next Work'], rows: [['01','','','AI Script'],['02','','','Video'],['03','','','Operations']] }
 ];
-try {
-  const savedResearchItems = JSON.parse(localStorage.getItem('tegy-research-book') || 'null');
-  if (Array.isArray(savedResearchItems) && savedResearchItems.length) researchItems.splice(0, researchItems.length, ...savedResearchItems);
-} catch {}
 const kaoResearchItems = structuredClone(researchItems);
 kaoResearchItems[0].rows = [
   ['Product','THE CORE · 3タイプのハーフ形状インソール','Official product page','Confirmed'],
@@ -311,6 +363,17 @@ kaoResearchItems[7].rows = [
   ['02','my Symmetryの測定を信頼の入口にする','自分向けの提案という納得感をつくる','Video'],
   ['03','3媒体共通Master＋End card差し替え','制作効率と媒体最適化を両立','Operations']
 ];
+const researchBooks = (() => {
+  try {
+    const books = JSON.parse(localStorage.getItem('tegy-research-books-v1') || '{}');
+    if (books && typeof books === 'object' && !Array.isArray(books)) return books;
+  } catch {}
+  return {};
+})();
+try {
+  const legacy = JSON.parse(localStorage.getItem('tegy-research-book') || 'null');
+  if (Array.isArray(legacy) && legacy.length && !researchBooks.demo) researchBooks.demo = legacy;
+} catch {}
 let activeResearchIndex = 0;
 let activeCompetitorIndex = 0;
 let activeCompetitorProductIndex = -1;
@@ -372,11 +435,17 @@ function restoreCompetitorCompanies() {
 }
 
 function getActiveResearchItems() {
-  return selectedProject === 'kao-the-core' ? kaoResearchItems : researchItems;
+  const projectId = selectedProject || 'draft';
+  if (!researchBooks[projectId]) researchBooks[projectId] = structuredClone(projectId === 'kao-the-core' ? kaoResearchItems : researchItems);
+  return researchBooks[projectId];
 }
 
 function saveResearchBook() {
-  localStorage.setItem('tegy-research-book', JSON.stringify(researchItems));
+  if (!selectedProject) return;
+  researchBooks[selectedProject] = getActiveResearchItems();
+  localStorage.setItem('tegy-research-books-v1', JSON.stringify(researchBooks));
+  const project = projects.find(item => item.id === selectedProject);
+  if (project?.remote) dataRequest(`/v1/projects/${selectedProject}/workspace-records`, { method:'POST', body:{ record_type:'research_book', record_key:'main', content:researchBooks[selectedProject] } }).catch(error => console.warn('Research database sync failed:', error));
 }
 
 function escapeHtml(value = '') {
@@ -515,6 +584,18 @@ async function openProject(id) {
       nodes = [pm, ...payload.works.map(nodeFromWork)];
       projectWorks[id] = structuredClone(nodes);
       projectPreviewTasks[id] = (payload.tasks || []).map(taskFromRemote);
+      const researchRecord = (payload.records || []).find(record => record.record_type === 'research_book' && record.record_key === 'main');
+      if (Array.isArray(researchRecord?.content)) {
+        researchBooks[id] = researchRecord.content;
+        localStorage.setItem('tegy-research-books-v1', JSON.stringify(researchBooks));
+      }
+      (payload.assets || []).forEach(asset => {
+        if (asset.asset_type === 'image' && asset.scene_key) {
+          storyboardImages[id] ||= {};
+          storyboardImages[id][asset.scene_key] = { assetId:asset.id, url:asset.public_url || '', fileName:asset.file_name || '', model:asset.model || '', reviewStatus:asset.review_status, metadata:asset.metadata || {} };
+        }
+        if (asset.asset_type === 'video' && asset.scene_key) generatedVideos[`${id}:${asset.scene_key}`] = { assetId:asset.id, url:asset.public_url || '', model:asset.model || '', metadata:asset.metadata || {} };
+      });
       saveProjectTasks();
     } catch (error) {
       alert(error.message);
@@ -1319,6 +1400,7 @@ async function generateAnimeStoryboardFrame(shotNumber) {
     const response=await fetch('/api/anime-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene:{visual:shot.imagePrompt,characterAction:shot.characterAction,camera:shot.camera,location:shot.location},projectContext:buildProjectContext(),animeContext:{title:result.treatment.title,concept:result.treatment.visualApproach,characters:result.treatment.characters,productionRules:result.treatment.productionRules},aspectRatio:result.treatment.aspectRatio})});
     const payload=await response.json(); if(!response.ok)throw new Error(payload.detail||payload.error||'Frame generation failed.');
     storyboardImages[selectedProject]||={}; storyboardImages[selectedProject][animeImageKey(result,shotNumber)]=payload;
+    await registerMediaAsset({ sceneKey:animeImageKey(result,shotNumber), assetType:'image', workId:activeWorkspaceNodeId, value:payload });
     await finishGenerationJob(job,'completed',payload);
     renderDeliveryWorkspace('animation',nodes.find(item=>item.id===activeWorkspaceNodeId)); $('workspaceSaveStatus').textContent=`✓ ${shotNumber} frame generated`;
   }catch(error){await finishGenerationJob(job,'failed',{error:error.message});button.disabled=false;button.textContent='Generate Frame';$('workspaceSaveStatus').textContent=error.message;}
@@ -1374,6 +1456,7 @@ async function generateAnimeShotVideo(shotNumber) {
       if (status.error || !status.videoUri) throw new Error(status.error || 'Video model returned no file.');
       const url = `/api/video-file?uri=${encodeURIComponent(status.videoUri)}`;
       generatedVideos[`${selectedProject}:${shotNumber}`] = { url, model:started.model, operation:started.operation };
+      await registerMediaAsset({ sceneKey:String(shotNumber), assetType:'video', workId:activeWorkspaceNodeId, value:generatedVideos[`${selectedProject}:${shotNumber}`] });
       await finishGenerationJob(job,'completed',{ model:started.model, videoUri:status.videoUri, usageUnits:8, estimatedCostUsd:veoEstimatedCost(started.model,8,'720p') });
       renderDeliveryWorkspace('animation',nodes.find(item=>item.id===activeWorkspaceNodeId));
       $('workspaceSaveStatus').textContent = `✓ ${shotNumber} video ready`;
@@ -1599,7 +1682,7 @@ function importStoryboardAsset(index,file) {
   if (!result || !file || !file.type.startsWith('image/')) return;
   if (file.size > 15 * 1024 * 1024) { $('workspaceSaveStatus').textContent='Asset must be under 15 MB.'; return; }
   const reader = new FileReader();
-  reader.onload = () => { storyboardImages[selectedProject] ||= {}; storyboardImages[selectedProject][storyboardKey(result,index)]={dataUrl:reader.result,model:'imported-asset',fileName:file.name}; const plan=storyboardPlan(result,index); plan.source='upload'; plan.assetStatus='review'; plan.planApproved=true; saveStoryboardPlans(); renderDeliveryWorkspace('script',nodes.find(item=>item.id===activeWorkspaceNodeId)); $('workspaceSaveStatus').textContent='✓ Asset imported · Waiting for image approval'; };
+  reader.onload = async () => { storyboardImages[selectedProject] ||= {}; const key=storyboardKey(result,index); const value={dataUrl:reader.result,model:'imported-asset',fileName:file.name,mimeType:file.type,reviewStatus:'review'}; storyboardImages[selectedProject][key]=value; await registerMediaAsset({ sceneKey:key, assetType:'image', source:'uploaded', workId:activeWorkspaceNodeId, value }); const plan=storyboardPlan(result,index); plan.source='upload'; plan.assetStatus='review'; plan.planApproved=true; saveStoryboardPlans(); renderDeliveryWorkspace('script',nodes.find(item=>item.id===activeWorkspaceNodeId)); $('workspaceSaveStatus').textContent='✓ Asset imported · Waiting for image approval'; };
   reader.readAsDataURL(file);
 }
 
@@ -1634,6 +1717,7 @@ async function generateStoryboardFrame(index, options = {}) {
     if (!response.ok) throw new Error(payload.detail || payload.error || 'Image generation failed.');
     storyboardImages[selectedProject] ||= {};
     storyboardImages[selectedProject][storyboardKey(result,index)] = payload;
+    await registerMediaAsset({ sceneKey:storyboardKey(result,index), assetType:'image', workId:activeWorkspaceNodeId, value:payload });
     plan.assetStatus = 'review'; plan.selected = false; saveStoryboardPlans();
     await finishGenerationJob(job, 'completed', { ...payload, usageUnits:1, estimatedCostUsd:STORYBOARD_IMAGE_PRICE_USD_1K });
     if (!options.skipRender) renderDeliveryWorkspace('script', nodes.find(item => item.id === activeWorkspaceNodeId));
@@ -1735,7 +1819,16 @@ function projectDeliveryPackage() {
     works:structuredClone(projectWorks[selectedProject] || nodes || []),
     research:structuredClone(researchOutputs[selectedProject] || []), scripts:structuredClone(outputs[selectedProject] || []),
     anime:structuredClone(animeOutputs[selectedProject] || []), shadowBan:structuredClone(shadowOutputs[selectedProject] || []),
-    storyboard:structuredClone(storyboardPlans[selectedProject] || {})
+    storyboard:structuredClone(storyboardPlans[selectedProject] || {}),
+    researchBook:structuredClone(getActiveResearchItems()),
+    tasks:structuredClone(projectPreviewTasks[selectedProject] || []),
+    operations:structuredClone(operationsContentCache[selectedProject] || localOperations[selectedProject] || []),
+    operationsInsights:structuredClone(operationInsights[selectedProject] || []),
+    videoPlan:structuredClone(videoPlans[selectedProject] || null),
+    mediaAssets:{
+      images:Object.fromEntries(Object.entries(storyboardImages[selectedProject] || {}).map(([key,value]) => [key,{ fileName:value.fileName || '', model:value.model || '', url:value.url || '', included:Boolean(value.dataUrl || value.url) }])),
+      videos:Object.fromEntries(Object.entries(generatedVideos).filter(([key]) => key.startsWith(`${selectedProject}:`)).map(([key,value]) => [key.slice(selectedProject.length + 1),value]))
+    }
   };
 }
 
@@ -2033,7 +2126,7 @@ function applyResearchOutput(result) {
     saveProjectTasks();
     updateTaskLauncher();
   }
-  if (selectedProject !== 'kao-the-core') saveResearchBook();
+  saveResearchBook();
   renderResearchBook();
 }
 
@@ -2065,9 +2158,9 @@ function renderResearchBook() {
   }
   $('researchTableHead').innerHTML = `<tr>${item.columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}<th>Review</th></tr>`;
   $('researchTableBody').innerHTML = item.rows.map((row,rowIndex) => `<tr>${row.map((cell,columnIndex) => `<td data-row="${rowIndex}" data-column="${columnIndex}"><span contenteditable="true">${escapeHtml(cell)}</span>${columnIndex === 2 && /^https?:\/\//.test(cell) ? `<a class="research-source-open" href="${escapeHtml(cell)}" target="_blank" rel="noopener">Open ↗</a>` : ''}</td>`).join('')}<td class="research-review-actions"><button class="${row[3] === '確認済み' || row[3] === 'Confirmed' ? 'confirmed' : ''}" data-confirm-row="${rowIndex}" aria-label="Confirm row">✓</button><button data-delete-row="${rowIndex}" aria-label="Delete row">×</button></td></tr>`).join('');
-  document.querySelectorAll('#researchTableBody td[data-row] [contenteditable]').forEach(editor => { editor.onblur = () => { const cell=editor.closest('td'); item.rows[Number(cell.dataset.row)][Number(cell.dataset.column)] = editor.textContent.trim(); if (selectedProject !== 'kao-the-core') saveResearchBook(); }; });
+  document.querySelectorAll('#researchTableBody td[data-row] [contenteditable]').forEach(editor => { editor.onblur = () => { const cell=editor.closest('td'); item.rows[Number(cell.dataset.row)][Number(cell.dataset.column)] = editor.textContent.trim(); saveResearchBook(); }; });
   document.querySelectorAll('[data-delete-row]').forEach(button => { button.onclick = () => { item.rows.splice(Number(button.dataset.deleteRow),1); saveResearchBook(); renderResearchBook(); }; });
-  document.querySelectorAll('[data-confirm-row]').forEach(button => { button.onclick = () => { const row=item.rows[Number(button.dataset.confirmRow)]; row[3] = row[3] === '確認済み' ? '要確認' : '確認済み'; if (selectedProject !== 'kao-the-core') saveResearchBook(); renderResearchBook(); }; });
+  document.querySelectorAll('[data-confirm-row]').forEach(button => { button.onclick = () => { const row=item.rows[Number(button.dataset.confirmRow)]; row[3] = row[3] === '確認済み' ? '要確認' : '確認済み'; saveResearchBook(); renderResearchBook(); }; });
 }
 
 function renderCompetitorExplorer() {
@@ -2241,6 +2334,7 @@ async function createProject(event) {
   const submit = form.querySelector('button[type="submit"]');
   submit.disabled = true;
   let id;
+  let localFallbackReason = '';
   try {
     const result = await dataRequest('/v1/projects', { method:'POST', body:{ organization_id:organizationId, client_name:companyName, project_name:name, final_requirement:requirement, customer_context:{ website } } });
     id = result.project.id;
@@ -2248,7 +2342,8 @@ async function createProject(event) {
     projectDetails[id] = { owner:'Mina Rho', deadline:'未設定', requirement, source:website };
     const researchResult = await dataRequest(`/v1/projects/${id}/works`, { method:'POST', body:{ type:'research', title:'Research Agent', workspace_state:{ x:42, y:43, detail:'Project Briefを入力してリサーチを開始' } } });
     projectWorks[id] = [createInitialProjectWorks()[0], nodeFromWork(researchResult.work)];
-  } catch {
+  } catch (error) {
+    localFallbackReason = error.message || 'Project database is unavailable.';
     id = `local-${Date.now()}`;
     const localProject = { id, remote:false, name, sub:companyName, mark:companyName.charAt(0) || '＋' };
     const localDetails = { owner:'Mina Rho', deadline:'未設定', requirement, source:website };
@@ -2264,6 +2359,7 @@ async function createProject(event) {
     $('newProjectDialog').close();
     renderProjects();
     await openProject(id);
+    if (localFallbackReason) setStatus(`Databaseに接続できないため、このProjectはこのブラウザだけに保存されています：${localFallbackReason}`, 'error');
     openTaskProposal(id);
   } catch (error) { setStatus(`Projectを作成できませんでした：${error.message}`, 'error'); }
   finally { submit.disabled = false; }
@@ -2492,6 +2588,7 @@ updateTaskLauncher();
 initializeCanvasToolbarDrag();
 showWelcome();
 syncRemoteProjects();
+restoreMediaCache();
 
 function setAuthMessage(message, kind = '') {
   $('authMessage').textContent = message;

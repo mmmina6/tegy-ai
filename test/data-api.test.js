@@ -87,3 +87,28 @@ test('data proxy forwards global content search filters', async () => {
     if (originalToken === undefined) delete process.env.TEGY_API_TOKEN; else process.env.TEGY_API_TOKEN = originalToken;
   }
 });
+
+test('data proxy allows project workspace records and media asset metadata', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.TEGY_API_URL;
+  const originalToken = process.env.TEGY_API_TOKEN;
+  process.env.TEGY_API_URL = 'https://tegy-api.example.com';
+  process.env.TEGY_API_TOKEN = 'internal-workspace-token';
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url:url.toString(), method:options.method, body:options.body && JSON.parse(options.body) });
+    return { status: 201, json: async () => ({ ok: true }) };
+  };
+  try {
+    await handler({ method:'POST', query:{ path:'/v1/projects/project-1/workspace-records' }, body:{ record_type:'research_book', record_key:'main', content:{ sections:[] } } }, responseRecorder());
+    await handler({ method:'POST', query:{ path:'/v1/projects/project-1/media-assets' }, body:{ asset_type:'image', scene_key:'scene-1' } }, responseRecorder());
+    assert.equal(calls[0].url, 'https://tegy-api.example.com/v1/projects/project-1/workspace-records');
+    assert.equal(calls[1].url, 'https://tegy-api.example.com/v1/projects/project-1/media-assets');
+    assert.equal(calls[0].body.record_type, 'research_book');
+    assert.equal(calls[1].body.asset_type, 'image');
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.TEGY_API_URL; else process.env.TEGY_API_URL = originalUrl;
+    if (originalToken === undefined) delete process.env.TEGY_API_TOKEN; else process.env.TEGY_API_TOKEN = originalToken;
+  }
+});
