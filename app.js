@@ -151,6 +151,7 @@ const projectWorks = loadProjectWorks();
 const researchOutputs = loadResearchOutputs();
 const shadowOutputs = loadShadowOutputs();
 const animeOutputs = loadAnimeOutputs();
+const videoPlans = JSON.parse(localStorage.getItem('tegy-video-plans') || '{}');
 const operationInsights = {};
 const operationsContentCache = {};
 let operationsView = 'list';
@@ -696,7 +697,7 @@ function openFullWorkspace(id) {
   $('fullWorkspaceIcon').className = `workspace-agent-icon ${node.cls}`;
   const workspaceKey = getWorkspaceKey(node);
   $('workTaskCount').textContent = String(tasksForCurrentContext(workspaceKey).filter(task => task.status !== 'completed').length);
-  $('runWorkspaceAgent').textContent = workspaceKey === 'research' ? '↻ Run Research' : workspaceKey === 'script' ? '↻ Generate Script' : '↻ Run Agent';
+  $('runWorkspaceAgent').textContent = workspaceKey === 'research' ? '↻ Run Research' : workspaceKey === 'script' ? '↻ Generate Script' : workspaceKey === 'video' ? '✓ Save Plan' : '↻ Run Agent';
   const stepMap = {
     research: getActiveResearchItems().map((item,index) => `${String(index + 1).padStart(2,'0')}. ${item.title}`),
     script: ['01. Campaign Brief','02. Persona / Viewer','03. Hook Library','04. Script Editor','05. Scenes / 字コンテ','06. Visual Storyboard / 絵コンテ','07. Versions'],
@@ -886,6 +887,7 @@ function renderDeliveryWorkspace(key, node) {
     const result = shadowOutputs[selectedProject]?.at(-1);
     const resultRoot = document.querySelector('.audit-result');
     if (resultRoot && result) resultRoot.insertAdjacentHTML('afterbegin', shadowEvidenceMarkup(result));
+    document.querySelectorAll('[data-export-index]').forEach(button => { button.onclick = () => exportShadowPackage(Number(button.dataset.exportIndex)); });
   }
   if (key === 'script') {
     const latestScriptResult = outputs[selectedProject]?.at(-1);
@@ -912,6 +914,11 @@ function renderDeliveryWorkspace(key, node) {
     document.querySelectorAll('[data-anime-shot]').forEach(button => { button.onclick = () => generateAnimeStoryboardFrame(button.dataset.animeShot); });
     wireAnimeVideoQueue();
     document.querySelectorAll('[data-export-index]').forEach(button => { button.onclick = () => exportAnimePackage(Number(button.dataset.exportIndex)); });
+  }
+  if (key === 'video') {
+    const form = $('videoProductionForm');
+    if (form) form.onsubmit = event => { event.preventDefault(); saveVideoProductionPlan(form, node); };
+    document.querySelectorAll('[data-export-index]').forEach(button => { button.onclick = () => exportVideoPackage(Number(button.dataset.exportIndex)); });
   }
   if (key === 'operations') loadOperationsWorkspace();
 }
@@ -962,7 +969,7 @@ function deliveryCenterMarkup(type) {
     return `${scriptProcessPreview(result)}${scriptWorkspaceMarkup(result)}`;
   }
   if (type === 'shadow') return shadowWorkspaceMarkup(shadowOutputs[selectedProject]?.at(-1));
-  if (type === 'video') return `<div class="video-board"><div class="video-preview"><button>▷</button><span>00:00 / 00:30</span></div><div class="video-meta"><section><small>REFERENCE ANALYSIS</small><h3>Hook → Proof → CTA</h3><p>最初の3秒、画面変化、字幕密度、CTA の構造を参考動画から抽出。</p></section><section><small>REVIEW STATUS</small><h3>Rough Cut v03</h3><p>2 comments waiting · Mina Rho</p></section></div><div class="timeline"><b>V1</b><i></i><i></i><i></i><b>A1</b><i></i><i></i></div></div>`;
+  if (type === 'video') return videoWorkspaceMarkup();
   if (type === 'operations') return operationsWorkspaceMarkup();
   if (type === 'brand') return `<div class="brand-board"><div class="brand-hero"><span>BRAND ESSENCE</span><h2>Trust that feels human.</h2><p>専門性を、生活者が理解できる言葉と温度で届ける。</p></div><div class="brand-grid"><article><small>POSITIONING</small><h3>Clear expertise</h3><p>複雑な情報を透明で分かりやすく。</p></article><article><small>TONE OF VOICE</small><h3>Calm · Honest · Warm</h3><p>強く売り込まず、判断を助ける。</p></article><article><small>DO</small><h3>Evidence first</h3><p>具体例、根拠、利用者視点。</p></article><article><small>DON'T</small><h3>Fear or pressure</h3><p>過度な断定と不安訴求を避ける。</p></article></div></div>`;
   return `<div class="manager-board"><div class="manager-summary"><article><small>WORK</small><b>6</b><span>2 in progress</span></article><article><small>REVIEWS</small><b>3</b><span>Client decision</span></article><article><small>DEADLINE</small><b>28 Aug</b><span>27 days left</span></article></div><div class="dependency-map"><div>Research</div><i>→</i><div>AI Script</div><i>→</i><div>Video</div><i>→</i><div>Operations</div></div></div>`;
@@ -970,6 +977,34 @@ function deliveryCenterMarkup(type) {
 
 function operationsWorkspaceMarkup() {
   return `<div class="operations-board live-operations"><section class="operations-control-note"><div><small>CHANNEL OPERATIONS</small><h2>公開予定と制作進行をTEGYで統括</h2><p>予約公開の実行は既存の外部ツールを使用し、TEGYでは担当・承認・予定日時・公開結果を一元管理します。</p></div><button>外部予約ツールを開く ↗</button></section><section class="operations-input"><form id="contentItemForm"><small>CONTENT CALENDAR</small><h2>公開予定を追加</h2><div><input name="title" required placeholder="動画タイトル"><select name="platform"><option>TikTok</option><option>Instagram</option><option>YouTube</option><option>Meta Ads</option></select><input name="scheduled_at" type="datetime-local"><button>追加</button></div></form><form id="performanceForm"><small>PERFORMANCE IMPORT</small><h2>公開結果を記録</h2><div><select name="content_item_id" id="performanceContentSelect" required><option value="">コンテンツを選択</option></select><input name="impressions" type="number" min="0" placeholder="Impressions"><input name="views" type="number" min="0" placeholder="Views"><input name="engagements" type="number" min="0" placeholder="Engagements"><input name="conversions" type="number" min="0" placeholder="Conversions"><button>保存</button></div></form></section><div class="performance-row" id="operationsTotals"><article><small>VIEWS</small><b>—</b></article><article><small>ENGAGEMENTS</small><b>—</b></article><article><small>CONVERSIONS</small><b>—</b></article></div><section class="operations-content-list"><header><small>PUBLISHING & PERFORMANCE</small><h2>Content Library</h2></header><div id="operationsContentList"><p>読み込み中...</p></div></section><section class="operations-learning"><header><small>FEEDBACK LOOP</small><h2>次のResearch／Scriptへの改善点</h2></header><div id="operationsInsightList"><p>Metricsから学習内容を生成します。</p></div></section></div>`;
+}
+
+function videoWorkspaceMarkup() {
+  const saved = videoPlans[selectedProject] || {};
+  const field = (name, fallback = '') => escapeHtml(saved[name] || fallback);
+  return `<div class="video-board production-video-board">
+    <form id="videoProductionForm" class="video-production-form">
+      <header><div><small>VIDEO BRIEF & PRODUCTION CONTROL</small><h2>映像制作プラン</h2><p>参考動画、Shot、素材、編集確認、納品状態をProject内で管理します。</p></div><button type="submit">保存</button></header>
+      <div class="audit-input-grid"><label>Format<select name="format"><option ${saved.format==='9:16 Vertical'?'selected':''}>9:16 Vertical</option><option ${saved.format==='16:9 Horizontal'?'selected':''}>16:9 Horizontal</option><option ${saved.format==='1:1 Square'?'selected':''}>1:1 Square</option></select></label><label>Duration<input name="duration" value="${field('duration','30秒')}"></label><label>担当者<input name="owner" value="${field('owner','Mina Rho')}"></label><label>期限<input name="deadline" type="date" value="${field('deadline')}"></label></div>
+      <label class="audit-notes">Reference URL<textarea name="references" placeholder="参考動画URLを1行ずつ入力">${field('references')}</textarea></label>
+      <label class="audit-notes">Shot List / 素材計画<textarea name="shots" placeholder="Shot 01｜素材ソース｜撮影・生成内容｜確認状態">${field('shots','Shot 01｜未設定｜Hook｜確認待ち\nShot 02｜未設定｜Main message｜確認待ち\nShot 03｜未設定｜CTA｜確認待ち')}</textarea></label>
+      <label class="audit-notes">Edit Review<textarea name="review" placeholder="Timecode、修正内容、Reviewer">${field('review')}</textarea></label>
+      <div class="audit-input-grid"><label>制作状態<select name="status"><option value="brief" ${saved.status==='brief'?'selected':''}>Brief</option><option value="production" ${saved.status==='production'?'selected':''}>制作中</option><option value="review" ${saved.status==='review'?'selected':''}>確認待ち</option><option value="approved" ${saved.status==='approved'?'selected':''}>承認済み</option></select></label><label>納品URL<input name="deliveryUrl" type="url" value="${field('deliveryUrl')}" placeholder="Google Drive / Review link"></label></div>
+    </form>
+    <div class="video-preview"><button type="button">▷</button><span>${saved.deliveryUrl ? 'Delivery link ready' : 'Preview pending'}</span></div>
+    <div class="video-meta"><section><small>REFERENCE ANALYSIS</small><h3>Hook → Proof → CTA</h3><p>${saved.references ? 'Reference URLを保存済み。構成・画面変化・CTAをShotへ反映します。' : '参考動画URLを追加して、構成と画面変化を確認します。'}</p></section><section><small>REVIEW STATUS</small><h3>${escapeHtml(statusDisplay(saved.status || 'brief'))}</h3><p>${saved.review ? '修正コメントあり' : 'Review commentはまだありません。'}</p></section></div>
+  </div>`;
+}
+
+function saveVideoProductionPlan(form, node) {
+  videoPlans[selectedProject] = Object.fromEntries(new FormData(form));
+  localStorage.setItem('tegy-video-plans', JSON.stringify(videoPlans));
+  node.status = videoPlans[selectedProject].status === 'approved' ? 'Completed' : videoPlans[selectedProject].status === 'review' ? 'Review' : 'In Progress';
+  node.progress = videoPlans[selectedProject].status === 'approved' ? 100 : videoPlans[selectedProject].status === 'review' ? 85 : 45;
+  node.detail = `Video · ${videoPlans[selectedProject].format} · ${statusDisplay(videoPlans[selectedProject].status)}`;
+  saveProjectWorks();
+  $('workspaceSaveStatus').textContent = '✓ Video制作プランを保存しました';
+  renderDeliveryWorkspace('video', node);
 }
 
 async function loadOperationsWorkspace() {
@@ -1569,6 +1604,58 @@ function downloadFile(name, content, type = 'text/plain;charset=utf-8') {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function researchExportRows() {
+  const rows = [['Section','Research item','Finding','Source / URL','Review']];
+  getActiveResearchItems().forEach(item => (item.rows || []).forEach(row => rows.push([item.title,...row])));
+  competitorCompanies.forEach(company => {
+    rows.push(['Competitor Companies',company.name,company.overview,company.sourceUrl || '',company.position || '']);
+    (company.products || []).forEach(product => rows.push(['Competitor Products',`${company.name} / ${product.name}`,product.summary,product.evidence || company.sourceUrl || '',product.type || '']));
+  });
+  return rows;
+}
+
+function exportResearchTable() {
+  const project = projects.find(item => item.id === selectedProject);
+  const csv = researchExportRows().map(row => row.map(csvCell).join(',')).join('\n');
+  downloadFile(`${safeFileName(project?.name)}-research.csv`, `\ufeff${csv}`, 'text/csv;charset=utf-8');
+  $('workspaceSaveStatus').textContent = '✓ Research Tableを書き出しました';
+}
+
+function exportResearchPdf() {
+  const project = projects.find(item => item.id === selectedProject);
+  const latest = researchOutputs[selectedProject]?.at(-1);
+  const sections = getActiveResearchItems().map(item => `<section><h2>${escapeHtml(item.title)}</h2><p>${escapeHtml(item.description || '')}</p><table><thead><tr>${item.columns.map(column=>`<th>${escapeHtml(column)}</th>`).join('')}</tr></thead><tbody>${(item.rows||[]).map(row=>`<tr>${row.map(cell=>`<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>`).join('');
+  const competitors = competitorCompanies.map(company => `<article><h3>${escapeHtml(company.name)}</h3><p>${escapeHtml(company.overview)}</p><small>${escapeHtml(company.sourceUrl || '')}</small><ul>${(company.products||[]).map(product=>`<li><b>${escapeHtml(product.name)}</b> — ${escapeHtml(product.summary)}</li>`).join('')}</ul></article>`).join('');
+  const popup = window.open('', '_blank');
+  if (!popup) return alert('PDF用ウィンドウを開けませんでした。ポップアップを許可してください。');
+  popup.document.write(`<title>${escapeHtml(project?.name || 'Project')} · Research Report</title><style>body{font-family:Arial,sans-serif;padding:36px;color:#17191d}header{border-bottom:2px solid #222;margin-bottom:24px}h1{margin:5px 0 10px}section,article{break-inside:avoid;margin:22px 0}table{width:100%;border-collapse:collapse;font-size:10px}th,td{border:1px solid #ddd;padding:7px;text-align:left;vertical-align:top}small{color:#667085}button{padding:10px 15px}@media print{button{display:none}}</style><button onclick="print()">Print / Save PDF</button><header><small>TEGY RESEARCH REPORT</small><h1>${escapeHtml(project?.name || 'Project')}</h1><p>${escapeHtml(latest?.strategy?.summary || projectDetails[selectedProject]?.requirement || '')}</p></header>${sections}<section><h2>Competitor Companies & Products</h2>${competitors}</section>`);
+  popup.document.close();
+}
+
+function exportShadowPackage(index) {
+  const result = shadowOutputs[selectedProject]?.at(-1);
+  if (!result) { $('workspaceSaveStatus').textContent = '診断結果がありません。先にAuditを実行してください。'; return; }
+  const project = projects.find(item => item.id === selectedProject);
+  if (index === 1) {
+    const actions = result.diagnosis?.actions || [];
+    const rows = [['Priority','Action','Owner','Reason','Success metric'],...actions.map(item=>[item.priority,item.action,item.owner,item.reason,item.successMetric])];
+    downloadFile(`${safeFileName(project?.name)}-shadow-actions.csv`,`\ufeff${rows.map(row=>row.map(csvCell).join(',')).join('\n')}`,'text/csv;charset=utf-8');
+    return;
+  }
+  const popup = window.open('', '_blank');
+  if (!popup) return alert('Report用ウィンドウを開けませんでした。');
+  popup.document.write(`<title>${escapeHtml(project?.name || 'Project')} · Channel Audit</title><style>body{font-family:Arial,sans-serif;padding:36px;color:#17191d;max-width:1000px;margin:auto}button{padding:10px 15px}.audit-result{display:block}.signal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.signal-grid article,.audit-findings article,.cause-section article,.recovery-roadmap article{border:1px solid #ddd;padding:12px;margin:8px 0}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:11px}@media print{button{display:none}}</style><button onclick="print()">Print / Save PDF</button><h1>${escapeHtml(project?.name || 'Project')} · Channel Health / SEO Audit</h1>${shadowResultMarkup(result)}`);
+  popup.document.close();
+}
+
+function exportVideoPackage(index) {
+  const project = projects.find(item => item.id === selectedProject);
+  const plan = videoPlans[selectedProject];
+  if (!plan) { $('workspaceSaveStatus').textContent = '先にVideo制作プランを保存してください。'; return; }
+  if (index === 0 && plan.deliveryUrl) return window.open(plan.deliveryUrl, '_blank', 'noopener');
+  downloadFile(`${safeFileName(project?.name)}-video-production.json`, JSON.stringify({ project:project?.name, exportedAt:new Date().toISOString(), plan }, null, 2), 'application/json');
+}
+
 function safeFileName(value) { return String(value || 'tegy-project').trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-').toLowerCase(); }
 
 function projectDeliveryPackage() {
@@ -1723,7 +1810,7 @@ function shadowResultMarkup(result) {
   const auditItems = [...(audit.technicalRisks || []), ...(audit.operationalRisks || [])];
   if (!auditItems.length) auditItems.push({ status:'needs-data', area:'Content / Operation Audit', evidence:'監査に必要な情報が不足しています。', recommendation:'直近50本のContent inventoryとAnalyticsを追加してください。' });
   if (!audit.seoGaps?.length) audit.seoGaps = ['Title、Description、Keywords、YouTube Search queriesを追加してください。'];
-  return `<section class="audit-result"><div class="health-score"><div style="--score:${score * 3.6}deg"><strong>${score}</strong><span>/ 100</span></div><section><small>CHANNEL HEALTH</small><h3>${escapeHtml(diagnosis.riskLevel || 'Needs review')}</h3><p>${escapeHtml(diagnosis.diagnosis || '')}</p><span class="confidence">Confidence · ${escapeHtml(diagnosis.confidence || 'Limited')}</span></section></div><div class="shadow-ban-verdict ${diagnosis.confirmedRestriction ? 'confirmed' : ''}"><b>${diagnosis.confirmedRestriction ? 'Explicit restriction evidence found' : 'No confirmed Shadow Ban'}</b><p>${escapeHtml(diagnosis.disclaimer || 'Performance changes alone cannot confirm a platform restriction.')}</p></div><div class="signal-grid">${signals.map(signal => `<article><span class="${signal.status === 'healthy' ? 'good' : signal.status === 'critical' ? 'critical' : 'warn'}">● ${escapeHtml(signal.status)}</span><h3>${escapeHtml(signal.label)}</h3><b>${escapeHtml(signal.value)}${escapeHtml(signal.unit)}</b></article>`).join('')}</div><section class="audit-findings"><small>CONTENT / OPERATION AUDIT</small><div>${auditItems.map(item => `<article><span>${escapeHtml(item.status)}</span><b>${escapeHtml(item.area)}</b><p>${escapeHtml(item.evidence)}</p><em>${escapeHtml(item.recommendation)}</em></article>`).join('') || '<p>需要更多资料完成内容审计。</p>'}</div></section><section class="seo-findings"><small>SEO CHECK</small><ul>${(audit.seoGaps || []).map(item => `<li>${escapeHtml(item)}</li>`).join('') || '<li>请提供标题、说明、关键词与搜索查询数据。</li>'}</ul></section><section class="cause-section"><small>POSSIBLE CAUSES</small>${causes.map(cause => `<article><div><b>${escapeHtml(cause.cause)}</b><span>${escapeHtml(cause.likelihood)}</span></div><p>${escapeHtml(cause.evidence)}</p><em>Alternative: ${escapeHtml(cause.alternativeExplanation)}</em></article>`).join('')}</section><table class="action-table"><thead><tr><th>Priority</th><th>Recommended action</th><th>Reason</th><th>Success metric</th></tr></thead><tbody>${actions.map(action => `<tr><td>${escapeHtml(action.priority)}</td><td>${escapeHtml(action.action)}<small>${escapeHtml(action.owner)}</small></td><td>${escapeHtml(action.reason)}</td><td>${escapeHtml(action.successMetric)}</td></tr>`).join('')}</tbody></table><section class="recovery-roadmap"><small>90-DAY RECOVERY ROADMAP</small><div>${recoveryPlan.map(phase => `<article><span>${escapeHtml(phase.period)}</span><h3>${escapeHtml(phase.phase)}</h3><p>${escapeHtml(phase.objective)}</p><ul>${(phase.tasks || []).map(task => `<li>${escapeHtml(task)}</li>`).join('')}</ul><b>Exit · ${(phase.exitCriteria || []).map(escapeHtml).join(' / ')}</b></article>`).join('')}</div></section><section class="verification-plan"><div><small>VERIFICATION STEPS</small><ul>${(diagnosis.verificationSteps || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div><div><small>MONITORING METRICS</small><ul>${(diagnosis.monitoringMetrics || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div></section></section>`;
+  return `<section class="audit-result"><div class="health-score"><div style="--score:${score * 3.6}deg"><strong>${score}</strong><span>/ 100</span></div><section><small>CHANNEL HEALTH</small><h3>${escapeHtml(diagnosis.riskLevel || 'Needs review')}</h3><p>${escapeHtml(diagnosis.diagnosis || '')}</p><span class="confidence">Confidence · ${escapeHtml(diagnosis.confidence || 'Limited')}</span></section></div><div class="shadow-ban-verdict ${diagnosis.confirmedRestriction ? 'confirmed' : ''}"><b>${diagnosis.confirmedRestriction ? '明示的な制限の証拠あり' : 'Shadow Banは確認されていません'}</b><p>${escapeHtml(diagnosis.disclaimer || 'Performanceの変化だけでは、Platformによる制限を断定できません。')}</p></div><div class="signal-grid">${signals.map(signal => `<article><span class="${signal.status === 'healthy' ? 'good' : signal.status === 'critical' ? 'critical' : 'warn'}">● ${escapeHtml(signal.status)}</span><h3>${escapeHtml(signal.label)}</h3><b>${escapeHtml(signal.value)}${escapeHtml(signal.unit)}</b></article>`).join('')}</div><section class="audit-findings"><small>CONTENT / OPERATION AUDIT</small><div>${auditItems.map(item => `<article><span>${escapeHtml(item.status)}</span><b>${escapeHtml(item.area)}</b><p>${escapeHtml(item.evidence)}</p><em>${escapeHtml(item.recommendation)}</em></article>`).join('') || '<p>Content Auditに必要な情報を追加してください。</p>'}</div></section><section class="seo-findings"><small>SEO CHECK</small><ul>${(audit.seoGaps || []).map(item => `<li>${escapeHtml(item)}</li>`).join('') || '<li>Title、Description、Keywords、Search queryを追加してください。</li>'}</ul></section><section class="cause-section"><small>POSSIBLE CAUSES</small>${causes.map(cause => `<article><div><b>${escapeHtml(cause.cause)}</b><span>${escapeHtml(cause.likelihood)}</span></div><p>${escapeHtml(cause.evidence)}</p><em>Alternative: ${escapeHtml(cause.alternativeExplanation)}</em></article>`).join('')}</section><table class="action-table"><thead><tr><th>Priority</th><th>Recommended action</th><th>Reason</th><th>Success metric</th></tr></thead><tbody>${actions.map(action => `<tr><td>${escapeHtml(action.priority)}</td><td>${escapeHtml(action.action)}<small>${escapeHtml(action.owner)}</small></td><td>${escapeHtml(action.reason)}</td><td>${escapeHtml(action.successMetric)}</td></tr>`).join('')}</tbody></table><section class="recovery-roadmap"><small>90-DAY RECOVERY ROADMAP</small><div>${recoveryPlan.map(phase => `<article><span>${escapeHtml(phase.period)}</span><h3>${escapeHtml(phase.phase)}</h3><p>${escapeHtml(phase.objective)}</p><ul>${(phase.tasks || []).map(task => `<li>${escapeHtml(task)}</li>`).join('')}</ul><b>Exit · ${(phase.exitCriteria || []).map(escapeHtml).join(' / ')}</b></article>`).join('')}</div></section><section class="verification-plan"><div><small>VERIFICATION STEPS</small><ul>${(diagnosis.verificationSteps || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div><div><small>MONITORING METRICS</small><ul>${(diagnosis.monitoringMetrics || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div></section></section>`;
 }
 
 function shadowEvidenceMarkup(result) {
@@ -1748,6 +1835,11 @@ async function runActiveWorkspaceAgent() {
   if (key === 'shadow') return runShadowAudit();
   if (key === 'script') return runScriptWorkspace();
   if (key === 'animation') return runAnimeWorkspace();
+  if (key === 'video') {
+    const form = $('videoProductionForm');
+    if (form) saveVideoProductionPlan(form, node);
+    return;
+  }
   if (key !== 'research') {
     $('workspaceSaveStatus').textContent = key === 'script' ? 'AI Script は下部チャットから実行できます' : 'この Agent の実行コードは次の開発フェーズです';
     return;
@@ -2287,6 +2379,8 @@ $('closeMyTasks').onclick = closeTaskPreview;
 $('showAllTasks').onclick = () => { taskScope = 'mine'; taskView = 'today'; renderTaskPreview(); };
 document.querySelectorAll('[data-task-view]').forEach(button => { button.onclick = () => { taskView = button.dataset.taskView; renderTaskPreview(); }; });
 $('addResearchRow').onclick = addResearchRow;
+$('exportResearchPdf').onclick = exportResearchPdf;
+$('exportResearchTable').onclick = exportResearchTable;
 $('addResearchSection').onclick = addResearchSection;
 $('googleAccountBtn').onclick = () => $('googleLoginDialog').showModal();
 $('closeGoogleDialog').onclick = () => $('googleLoginDialog').close();
