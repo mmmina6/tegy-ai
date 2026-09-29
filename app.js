@@ -1143,8 +1143,37 @@ function renderOperationsContent() {
   const pageSize = 50, pages = Math.max(1,Math.ceil(filtered.length/pageSize));
   operationsPage = Math.min(operationsPage,pages);
   const pageItems = filtered.slice((operationsPage-1)*pageSize,operationsPage*pageSize);
-  $('operationsContentList').innerHTML = pageItems.length ? pageItems.map(item=>`<article><span class="operations-platform">${escapeHtml(item.platform)}</span><div><b>${escapeHtml(item.title)}</b><small>${escapeHtml(statusDisplay(item.status))} · ${escapeHtml(item.scheduled_at || item.published_at || '日付未設定')}</small></div><em>${Number(item.views || 0).toLocaleString()} views · ${Number(item.engagements || 0).toLocaleString()} engagements</em></article>`).join('') + `<nav class="content-pagination"><button data-content-page="prev" ${operationsPage===1?'disabled':''}>←</button><span>${operationsPage} / ${pages} · ${filtered.length} items</span><button data-content-page="next" ${operationsPage===pages?'disabled':''}>→</button></nav>` : '<p>該当するコンテンツがありません。</p>';
+  $('operationsContentList').innerHTML = pageItems.length ? pageItems.map(item=>`<article><span class="operations-platform">${escapeHtml(item.platform)}</span><div><b>${escapeHtml(item.title)}</b><small>${escapeHtml(statusDisplay(item.status))} · ${escapeHtml(item.scheduled_at || item.published_at || '日付未設定')}</small></div><em>${Number(item.views || 0).toLocaleString()} views · ${Number(item.engagements || 0).toLocaleString()} engagements</em><div class="operations-item-actions"><button data-edit-content="${escapeHtml(item.id)}">編集</button><button data-delete-content="${escapeHtml(item.id)}">削除</button></div></article>`).join('') + `<nav class="content-pagination"><button data-content-page="prev" ${operationsPage===1?'disabled':''}>←</button><span>${operationsPage} / ${pages} · ${filtered.length} items</span><button data-content-page="next" ${operationsPage===pages?'disabled':''}>→</button></nav>` : '<p>該当するコンテンツがありません。</p>';
   document.querySelectorAll('[data-content-page]').forEach(button => { button.onclick = () => { operationsPage += button.dataset.contentPage === 'next' ? 1 : -1; renderOperationsContent(); }; });
+  document.querySelectorAll('[data-edit-content]').forEach(button => { button.onclick = () => editOperationsContent(button.dataset.editContent); });
+  document.querySelectorAll('[data-delete-content]').forEach(button => { button.onclick = () => deleteOperationsContent(button.dataset.deleteContent); });
+}
+
+async function editOperationsContent(contentId) {
+  const item = (operationsContentCache[selectedProject] || []).find(entry => entry.id === contentId);
+  if (!item) return;
+  const title = prompt('動画タイトル', item.title);
+  if (title === null || !title.trim()) return;
+  const scheduledAt = prompt('公開予定日時（YYYY-MM-DDTHH:mm）', item.scheduled_at || '');
+  if (scheduledAt === null) return;
+  const project = projects.find(entry => entry.id === selectedProject);
+  if (project?.remote) await dataRequest(`/v1/content-items/${contentId}`, { method:'PATCH', body:{ title:title.trim(), scheduled_at:scheduledAt.trim() || null } });
+  else { item.title = title.trim(); item.scheduled_at = scheduledAt.trim(); saveLocalOperations(); }
+  await loadOperationsWorkspace();
+  $('workspaceSaveStatus').textContent = '✓ 公開予定を更新しました';
+}
+
+async function deleteOperationsContent(contentId) {
+  const item = (operationsContentCache[selectedProject] || []).find(entry => entry.id === contentId);
+  if (!item || !confirm(`「${item.title}」を削除しますか？`)) return;
+  const project = projects.find(entry => entry.id === selectedProject);
+  if (project?.remote) await dataRequest(`/v1/content-items/${contentId}`, { method:'DELETE' });
+  else {
+    const store = localOperations[selectedProject] ||= { content:[], insights:[] };
+    store.content = store.content.filter(entry => entry.id !== contentId); saveLocalOperations();
+  }
+  await loadOperationsWorkspace();
+  $('workspaceSaveStatus').textContent = '✓ 公開予定を削除しました';
 }
 
 async function createOperationsContent(event) {

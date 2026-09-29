@@ -313,6 +313,19 @@ async function createContentItem(request, env, projectId) {
   return json({ content_item:await env.DB.prepare(`SELECT * FROM content_items WHERE id=?`).bind(id).first() },201);
 }
 
+async function updateContentItem(request, env, contentId) {
+  const current = await env.DB.prepare(`SELECT * FROM content_items WHERE id=?`).bind(contentId).first();
+  if (!current) return json({ error:"Content item not found" },404);
+  if (request.method === "DELETE") {
+    await env.DB.prepare(`UPDATE content_items SET status='archived', updated_at=datetime('now') WHERE id=?`).bind(contentId).run();
+    return json({ archived:true, id:contentId });
+  }
+  const body = await bodyJson(request) || {};
+  await env.DB.prepare(`UPDATE content_items SET title=?, platform=?, status=?, scheduled_at=?, published_at=?, external_url=?, updated_at=datetime('now') WHERE id=?`)
+    .bind(body.title ?? current.title,body.platform ?? current.platform,body.status ?? current.status,body.scheduled_at ?? current.scheduled_at,body.published_at ?? current.published_at,body.external_url ?? current.external_url,contentId).run();
+  return json({ content_item:await env.DB.prepare(`SELECT * FROM content_items WHERE id=?`).bind(contentId).first() });
+}
+
 export function deriveOperationsInsight(itemTitle, values) {
   const engagementRate = values.views ? values.engagements / values.views : 0;
   const conversionRate = values.views ? values.conversions / values.views : 0;
@@ -448,6 +461,8 @@ async function route(request, env) {
   if (operationsMatch && request.method === "GET") return operationsOverview(env, operationsMatch[1]);
   const contentItemsMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/content-items$/);
   if (contentItemsMatch && request.method === "POST") return createContentItem(request, env, contentItemsMatch[1]);
+  const contentItemMatch = url.pathname.match(/^\/v1\/content-items\/([^/]+)$/);
+  if (contentItemMatch && ["PATCH", "DELETE"].includes(request.method)) return updateContentItem(request, env, contentItemMatch[1]);
   const performanceMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/performance$/);
   if (performanceMatch && request.method === "POST") return addPerformance(request, env, performanceMatch[1]);
   const workspaceRecordsMatch = url.pathname.match(/^\/v1\/projects\/([^/]+)\/workspace-records$/);

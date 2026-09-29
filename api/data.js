@@ -11,6 +11,7 @@ const ALLOWED_PATHS = [
   /^\/v1\/projects\/[a-zA-Z0-9_-]+\/campaigns$/,
   /^\/v1\/projects\/[a-zA-Z0-9_-]+\/operations$/,
   /^\/v1\/projects\/[a-zA-Z0-9_-]+\/content-items$/,
+  /^\/v1\/content-items\/[a-zA-Z0-9_-]+$/,
   /^\/v1\/projects\/[a-zA-Z0-9_-]+\/performance$/,
   /^\/v1\/projects\/[a-zA-Z0-9_-]+\/workspace-records$/,
   /^\/v1\/projects\/[a-zA-Z0-9_-]+\/media-assets$/,

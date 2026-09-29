@@ -102,10 +102,13 @@ test('data proxy allows project workspace records and media asset metadata', asy
   try {
     await handler({ method:'POST', query:{ path:'/v1/projects/project-1/workspace-records' }, body:{ record_type:'research_book', record_key:'main', content:{ sections:[] } } }, responseRecorder());
     await handler({ method:'POST', query:{ path:'/v1/projects/project-1/media-assets' }, body:{ asset_type:'image', scene_key:'scene-1' } }, responseRecorder());
+    await handler({ method:'PATCH', query:{ path:'/v1/content-items/content-1' }, body:{ title:'Updated title' } }, responseRecorder());
     assert.equal(calls[0].url, 'https://tegy-api.example.com/v1/projects/project-1/workspace-records');
     assert.equal(calls[1].url, 'https://tegy-api.example.com/v1/projects/project-1/media-assets');
     assert.equal(calls[0].body.record_type, 'research_book');
     assert.equal(calls[1].body.asset_type, 'image');
+    assert.equal(calls[2].url, 'https://tegy-api.example.com/v1/content-items/content-1');
+    assert.equal(calls[2].method, 'PATCH');
   } finally {
     globalThis.fetch = originalFetch;
     if (originalUrl === undefined) delete process.env.TEGY_API_URL; else process.env.TEGY_API_URL = originalUrl;
