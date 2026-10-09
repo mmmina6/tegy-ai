@@ -2,6 +2,9 @@ import { STORYBOARD_IMAGE_PRICE_USD_1K, eligibleStoryboardIndexes, estimatedStor
 import { parakoProject, parakoProjectDetails, parakoWorks, parakoShadowResult } from './src/fixtures/parako-shadow-test.js';
 import { detectCoworkerIntent, workNameForIntent, coworkerConfirmation } from './src/coworker/intent-router.js';
 import { initializeAuth, resetPassword, signInWithEmail, signInWithGoogle, signOut } from './src/services/supabase-auth.js';
+import { runResearchSteps } from './src/agents/research/client-runner.js';
+
+const researchRuns = new Map();
 
 let signedInUser = null;
 // Keep the workspace public during the build-out. Set to true when access control launches.
@@ -399,9 +402,9 @@ function saveCompetitorCompanies() {
   localStorage.setItem(competitorStorageKey(), JSON.stringify(competitorCompanies));
 }
 
-function hydrateCompetitorCompanies(findings = []) {
+function hydrateCompetitorCompanies(findings = [], projectId = selectedProject) {
   if (!findings.length) return;
-  competitorCompanies = findings.map((item,index) => ({
+  const companies = findings.map((item,index) => ({
     name:item.companyName || item.accountName || item.topic || `競合候補 ${index + 1}`,
     group:item.group || String.fromCharCode(65 + Math.min(index, 2)),
     category:item.category || item.confidence || 'Web Researchで取得',
@@ -418,9 +421,12 @@ function hydrateCompetitorCompanies(findings = []) {
       channels:product.channels || ''
     })) : []
   }));
-  activeCompetitorIndex = 0;
-  activeCompetitorProductIndex = -1;
-  saveCompetitorCompanies();
+  localStorage.setItem(`tegy-competitors-${projectId || 'default'}`, JSON.stringify(companies));
+  if (projectId === selectedProject) {
+    competitorCompanies = companies;
+    activeCompetitorIndex = 0;
+    activeCompetitorProductIndex = -1;
+  }
 }
 
 function restoreCompetitorCompanies() {
@@ -434,18 +440,20 @@ function restoreCompetitorCompanies() {
   } catch {}
 }
 
-function getActiveResearchItems() {
-  const projectId = selectedProject || 'draft';
+function getActiveResearchItems(projectId = selectedProject || 'draft') {
   if (!researchBooks[projectId]) researchBooks[projectId] = structuredClone(projectId === 'kao-the-core' ? kaoResearchItems : researchItems);
   return researchBooks[projectId];
 }
 
-function saveResearchBook() {
-  if (!selectedProject) return;
-  researchBooks[selectedProject] = getActiveResearchItems();
+function saveResearchBook(projectId = selectedProject, strict = false) {
+  if (!projectId) return;
+  researchBooks[projectId] = getActiveResearchItems(projectId);
   localStorage.setItem('tegy-research-books-v1', JSON.stringify(researchBooks));
-  const project = projects.find(item => item.id === selectedProject);
-  if (project?.remote) dataRequest(`/v1/projects/${selectedProject}/workspace-records`, { method:'POST', body:{ record_type:'research_book', record_key:'main', content:researchBooks[selectedProject] } }).catch(error => console.warn('Research database sync failed:', error));
+  const project = projects.find(item => item.id === projectId);
+  if (project?.remote) return dataRequest(`/v1/projects/${projectId}/workspace-records`, { method:'POST', body:{ record_type:'research_book', record_key:'main', content:researchBooks[projectId] } }).catch(error => {
+    if (strict) throw error;
+    console.warn('Research database sync failed:', error);
+  });
 }
 
 function escapeHtml(value = '') {
@@ -806,6 +814,8 @@ function openFullWorkspace(id) {
   $('genericWorkspace').classList.toggle('hidden', workspaceKey === 'research');
   if (workspaceKey === 'research') renderResearchBook();
   else renderDeliveryWorkspace(workspaceKey, node);
+  $('runWorkspaceAgent').disabled = false;
+  if (workspaceKey === 'research') renderResearchRunState();
 }
 
 function previewTasks() {
@@ -2045,35 +2055,92 @@ async function runActiveWorkspaceAgent() {
     $('workspaceSaveStatus').textContent = 'このWorkは保存・書き出しに対応しています';
     return;
   }
+  return runResearchWorkspace(node);
+}
+
+function renderResearchRunState() {
+  const run = researchRuns.get(`${selectedProject}:${activeWorkspaceNodeId}`);
   const button = $('runWorkspaceAgent');
-  button.disabled = true;
-  $('workspaceSaveStatus').textContent = '● Research Agent 実行中...';
-  node.status = 'In Progress'; node.progress = 55; saveProjectWorks();
+  button.disabled = !!run?.running;
+  button.textContent = run?.running ? '● 調査中' : run?.error ? '↻ 再試行' : '↻ Run Research';
+  const elapsed = run?.running ? ` · ${Math.floor((Date.now() - run.stepStartedAt) / 1000)}秒` : '';
+  $('workspaceSaveStatus').textContent = run ? `${run.message}${elapsed}` : 'Run Researchで調査を開始できます';
+  $('workspaceSaveStatus').setAttribute('role', 'status');
+}
+
+function updateResearchWork(projectId, node, patch) {
+  Object.assign(node, patch);
+  const works = projectId === selectedProject ? nodes : projectWorks[projectId] || [];
+  const current = works.find(item => item.id === node.id);
+  if (current) Object.assign(current, patch);
+  projectWorks[projectId] = structuredClone(works);
+  localStorage.setItem('tegy-project-works', JSON.stringify(projectWorks));
+  if (projectId === selectedProject) renderNodes();
+}
+
+async function runResearchWorkspace(node) {
+  if (location.protocol === 'file:') {
+    $('workspaceSaveStatus').textContent = 'Researchはオンライン版で実行してください： https://tegy-ai.vercel.app/';
+    return;
+  }
+  // Bind the run to its starting Project, even when the user navigates to another one.
+  const projectId = selectedProject;
+  const key = `${projectId}:${node.id}`;
+  let run = researchRuns.get(key);
+  if (run?.running) return;
+  const projectContext = structuredClone(buildProjectContext());
+  const researchBook = structuredClone(getActiveResearchItems());
+  const fingerprint = JSON.stringify({ projectContext, researchBook });
+  if (!run || run.finished || (!run.payload && run.fingerprint !== fingerprint)) {
+    run = { fingerprint, projectContext, researchBook, checkpoint:{} };
+    researchRuns.set(key, run);
+  }
+  run.running = true; run.error = false; run.stepStartedAt = Date.now(); run.message = '● 調査を開始しています';
+  const refresh = () => {
+    if (selectedProject === projectId && activeWorkspaceNodeId === node.id) renderResearchRunState();
+  };
+  refresh();
+  const timer = setInterval(refresh, 1000);
   try {
-    const response = await fetch('/api/research', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ projectContext:buildProjectContext(), researchBook:getActiveResearchItems(), enableWebResearch:true }) });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || payload.error || 'Research failed.');
-    researchOutputs[selectedProject] ||= [];
-    researchOutputs[selectedProject].push(payload);
+    updateResearchWork(projectId, node, { status:'In Progress' });
+    run.payload ||= await runResearchSteps({
+      projectContext:run.projectContext, researchBook:run.researchBook, checkpoint:run.checkpoint,
+      onProgress:step => {
+        run.stepStartedAt = Date.now(); run.message = `● ${step.index + 1}/4 ${step.label}`;
+        updateResearchWork(projectId, node, { progress:step.index * 25, detail:step.label });
+        refresh();
+      }
+    });
+    const payload = run.payload;
+    run.message = '● 調査結果を保存中'; run.stepStartedAt = Date.now(); refresh();
+    researchOutputs[projectId] ||= [];
+    if (!researchOutputs[projectId].includes(payload)) researchOutputs[projectId].push(payload);
     saveResearchOutputs();
-    if (node.remote) {
+    if (!run.applied) {
+      await applyResearchOutput(payload, projectId, true);
+      run.applied = true;
+    }
+    if (node.remote && !run.deliverableSaved) {
       if (node.deliverableId) {
         await dataRequest(`/v1/deliverables/${node.deliverableId}/versions`, { method:'POST', body:{ content:payload, change_summary:'Research rerun with refreshed evidence' } });
       } else {
-        const saved = await dataRequest(`/v1/works/${node.id}/deliverables`, { method:'POST', body:{ kind:'research_report', title:`${buildProjectContext().name} Research Report`, content:payload, change_summary:'Initial grounded research report' } });
+        const saved = await dataRequest(`/v1/works/${node.id}/deliverables`, { method:'POST', body:{ kind:'research_report', title:`${run.projectContext.name} Research Report`, content:payload, change_summary:'Initial grounded research report' } });
         node.deliverableId = saved.deliverable.id;
       }
-      await dataRequest(`/v1/works/${node.id}`, { method:'PATCH', body:{ status:'completed', progress:100, workspace_state:{ x:node.x, y:node.y, detail:'Grounded Research Report', deliverableId:node.deliverableId } } });
+      run.deliverableSaved = true;
     }
-    applyResearchOutput(payload);
-    const evidenceGapCount = payload.landscape?.evidenceGaps?.length || 0;
-    node.status = evidenceGapCount ? 'Review' : 'Completed'; node.progress = evidenceGapCount ? 90 : 100; saveProjectWorks();
-    $('workspaceSaveStatus').textContent = evidenceGapCount ? `✓ Research保存済み · ${evidenceGapCount}件を人工確認` : '✓ Research Report を保存しました';
+    const gaps = payload.landscape?.evidenceGaps?.length || 0;
+    const progress = gaps ? 90 : 100;
+    if (node.remote) await dataRequest(`/v1/works/${node.id}`, { method:'PATCH', body:{ status:gaps ? 'review' : 'completed', progress, workspace_state:{ x:node.x, y:node.y, detail:'Grounded Research Report', deliverableId:node.deliverableId } } });
+    updateResearchWork(projectId, node, { status:gaps ? 'Review' : 'Completed', progress, detail:'Research Report 保存済み', deliverableId:node.deliverableId });
+    run.finished = true;
+    run.message = gaps ? `✓ 調査結果を保存しました · ${gaps}件は要確認` : '✓ 調査結果を保存しました';
   } catch (error) {
-    node.status = 'Needs attention'; node.progress = 0; saveProjectWorks();
-    $('workspaceSaveStatus').textContent = error.message;
+    run.error = true;
+    run.message = `${run.payload ? '結果生成済み・保存未完了' : run.message.replace(/^● /, '')}：${error.message} 「再試行」で続行できます。`;
+    updateResearchWork(projectId, node, { status:'Needs attention', detail:run.payload ? '調査結果の保存を再試行してください' : '調査を再試行してください' });
   } finally {
-    button.disabled = false;
+    clearInterval(timer); run.running = false; refresh();
   }
 }
 
@@ -2108,8 +2175,8 @@ async function runShadowAudit() {
   }
 }
 
-function applyResearchOutput(result) {
-  const targetItems = getActiveResearchItems();
+function applyResearchOutput(result, projectId = selectedProject, strict = false) {
+  const targetItems = getActiveResearchItems(projectId);
   const companyFindings = result.landscape?.companyProfile || [];
   const productFindings = result.landscape?.productPortfolio || [];
   if (companyFindings.length || productFindings.length) {
@@ -2127,7 +2194,7 @@ function applyResearchOutput(result) {
   const competitorResults = result.landscape?.competitorCompanies?.length
     ? result.landscape.competitorCompanies
     : (result.landscape?.competitorAccounts || []);
-  hydrateCompetitorCompanies(competitorResults);
+  hydrateCompetitorCompanies(competitorResults, projectId);
   const groundedSources = result.webEvidence?.sources || [];
   if (groundedSources.length) {
     const existingUrls = new Set(targetItems[0].rows.map(row => row[2]));
@@ -2140,23 +2207,27 @@ function applyResearchOutput(result) {
   if (result.strategy?.strategicDirections?.length) targetItems[7].rows = result.strategy.strategicDirections.map(item => [String(item.priority), item.direction, item.rationale, item.recommendedWork]);
   const recommendations = result.strategy?.strategicDirections || [];
   const recommendationHost = $('researchRecommendations');
+  if (projectId === selectedProject) {
   recommendationHost.classList.toggle('hidden', !recommendations.length);
   recommendationHost.innerHTML = recommendations.length ? `<small>NEXT WORK</small><h3>推奨する次のWork</h3><p>Research結果から候補を作成しました。確認したものだけProjectへ追加します。</p>${recommendations.slice(0,3).map(item => `<button data-recommended-work="${escapeHtml(item.recommendedWork)}">＋ ${escapeHtml(item.recommendedWork)}</button>`).join('')}` : '';
   recommendationHost.querySelectorAll('[data-recommended-work]').forEach(button => { button.onclick = () => addAgent(button.dataset.recommendedWork); });
+  }
   const evidenceGaps = result.landscape?.evidenceGaps || [];
-  if (evidenceGaps.length && selectedProject) {
-    const projectName = projects.find(item => item.id === selectedProject)?.name || 'Project';
-    const current = projectPreviewTasks[selectedProject] || [];
+  if (evidenceGaps.length && projectId) {
+    const projectName = projects.find(item => item.id === projectId)?.name || 'Project';
+    const current = projectPreviewTasks[projectId] || [];
     evidenceGaps.forEach((gap,index) => {
-      const id = `${selectedProject}-evidence-gap-${index}`;
+      const id = `${projectId}-evidence-gap-${index}`;
       if (!current.some(task => task.id === id)) current.push({ id, project:projectName, work:'Research', title:'不足している根拠を確認', due:'期限未設定', priority:'High', status:'blocked', taskStatus:'blocked', owner:'Mina Rho', reviewer:'未設定', blockedReason:gap, detail:gap, history:[{ at:new Date().toISOString(), action:'created_from_research_gap', actor:'Research Agent' }] });
     });
-    projectPreviewTasks[selectedProject] = current;
+    projectPreviewTasks[projectId] = current;
     saveProjectTasks();
     updateTaskLauncher();
   }
-  saveResearchBook();
-  renderResearchBook();
+  const saved = saveResearchBook(projectId, strict);
+  const activeNode = nodes.find(item => item.id === activeWorkspaceNodeId);
+  if (projectId === selectedProject && activeNode && getWorkspaceKey(activeNode) === 'research') renderResearchBook();
+  return saved;
 }
 
 function renderResearchBook() {
