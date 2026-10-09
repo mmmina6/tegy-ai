@@ -203,6 +203,7 @@ function taskFromRemote(task) {
 let activeWorkspaceNodeId = null;
 let activeScriptExportSection = 3;
 let searchRequestSequence = 0;
+let projectLoadSequence = 0;
 let pendingAnimePrompt = '';
 let activeVoiceSession = null;
 
@@ -381,18 +382,7 @@ let activeResearchIndex = 0;
 let activeCompetitorIndex = 0;
 let activeCompetitorProductIndex = -1;
 
-let competitorCompanies = [
-  {
-    name:'競合会社 A', category:'調査実行後に自動分類', position:'主要競合候補',
-    overview:'Research Agent が公式サイトと公開情報から会社概要を取得します。',
-    background:'設立背景・沿革・経営上の転機を出典付きで整理します。',
-    culture:'企業理念・ブランド文化を取得します。',
-    businesses:['事業領域','主要ブランド','提供サービス'],
-    products:[
-      { name:'商品・サービス A', type:'自動分類', summary:'会社との関係を保ったまま商品情報を整理します。', offer:'価格・提供条件を取得', target:'対象顧客を推定後、要確認として表示', strengths:'特徴・USPを根拠と分けて抽出', evidence:'出典URLと取得日を記録', channels:'販売・接点チャネルを取得' }
-    ]
-  }
-];
+let competitorCompanies = [];
 
 function competitorStorageKey() {
   return `tegy-competitors-${selectedProject || 'default'}`;
@@ -430,9 +420,13 @@ function hydrateCompetitorCompanies(findings = [], projectId = selectedProject) 
 }
 
 function restoreCompetitorCompanies() {
+  // An empty Project must never inherit the previously selected client's competitors.
+  competitorCompanies = [];
+  activeCompetitorIndex = 0;
+  activeCompetitorProductIndex = -1;
   try {
     const saved = JSON.parse(localStorage.getItem(competitorStorageKey()) || 'null');
-    if (Array.isArray(saved) && saved.length) competitorCompanies = saved;
+    if (Array.isArray(saved)) competitorCompanies = saved;
     else {
       const latest = researchOutputs[selectedProject]?.at(-1)?.landscape;
       hydrateCompetitorCompanies(latest?.competitorCompanies?.length ? latest.competitorCompanies : (latest?.competitorAccounts || []));
@@ -580,14 +574,25 @@ function closeProjectSearch() {
 }
 
 async function openProject(id) {
+  const project = projects.find(item => item.id === id);
+  if (!project) return;
+  const sequence = ++projectLoadSequence;
   closeFullWorkspace();
   closeInspector();
   closeTaskPreview();
   selectedProject = id;
-  const project = projects.find(item => item.id === id);
+  nodes = [];
+  activeResearchIndex = 0;
+  restoreCompetitorCompanies();
+  $('researchRecommendations').classList.add('hidden');
+  $('researchRecommendations').innerHTML = '';
+  canvas.classList.add('hidden');
+  renderProjects();
   if (project?.remote) {
     try {
       const payload = await dataRequest(`/v1/projects/${id}`);
+      // Ignore an older response after another Project (or Home) has been selected.
+      if (sequence !== projectLoadSequence || selectedProject !== id) return;
       const pm = createInitialProjectWorks()[0];
       nodes = [pm, ...payload.works.map(nodeFromWork)];
       projectWorks[id] = structuredClone(nodes);
@@ -606,6 +611,7 @@ async function openProject(id) {
       });
       saveProjectTasks();
     } catch (error) {
+      if (sequence !== projectLoadSequence || selectedProject !== id) return;
       alert(error.message);
       return;
     }
@@ -632,6 +638,7 @@ async function openProject(id) {
 }
 
 function showWelcome() {
+  ++projectLoadSequence;
   selectedProject = null;
   app.classList.add('sidebar-hidden');
   welcome.classList.remove('hidden');
@@ -812,7 +819,10 @@ function openFullWorkspace(id) {
   $('workspaceSteps').innerHTML = steps.map((step,index) => `<button class="${index === 0 ? 'done' : index === 1 ? 'active' : ''}">${escapeHtml(step)}<span>${index === 0 ? '✓' : index === 1 ? 'In Progress' : 'Pending'}</span></button>`).join('');
   $('researchWorkspace').classList.toggle('hidden', workspaceKey !== 'research');
   $('genericWorkspace').classList.toggle('hidden', workspaceKey === 'research');
-  if (workspaceKey === 'research') renderResearchBook();
+  if (workspaceKey === 'research') {
+    restoreCompetitorCompanies();
+    renderResearchBook();
+  }
   else renderDeliveryWorkspace(workspaceKey, node);
   $('runWorkspaceAgent').disabled = false;
   if (workspaceKey === 'research') renderResearchRunState();
@@ -1776,6 +1786,7 @@ function downloadFile(name, content, type = 'text/plain;charset=utf-8') {
 }
 
 function researchExportRows() {
+  restoreCompetitorCompanies();
   const rows = [['Section','Research item','Finding','Source / URL','Review']];
   getActiveResearchItems().forEach(item => (item.rows || []).forEach(row => rows.push([item.title,...row])));
   competitorCompanies.forEach(company => {
@@ -1793,6 +1804,7 @@ function exportResearchTable() {
 }
 
 function exportResearchPdf() {
+  restoreCompetitorCompanies();
   const project = projects.find(item => item.id === selectedProject);
   const latest = researchOutputs[selectedProject]?.at(-1);
   const sections = getActiveResearchItems().map(item => `<section><h2>${escapeHtml(item.title)}</h2><p>${escapeHtml(item.description || '')}</p><table><thead><tr>${item.columns.map(column=>`<th>${escapeHtml(column)}</th>`).join('')}</tr></thead><tbody>${(item.rows||[]).map(row=>`<tr>${row.map(cell=>`<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>`).join('');
@@ -2205,13 +2217,6 @@ function applyResearchOutput(result, projectId = selectedProject, strict = false
   const market = result.marketInsight;
   if (market?.marketPersonas?.length) targetItems[6].rows = market.marketPersonas.map(persona => [persona.name, persona.needs.join(' / '), persona.context, persona.evidenceBasis.join(' / ')]).concat([['Primary Market Insight','',market.primaryMarketInsight,'Research Agent']]);
   if (result.strategy?.strategicDirections?.length) targetItems[7].rows = result.strategy.strategicDirections.map(item => [String(item.priority), item.direction, item.rationale, item.recommendedWork]);
-  const recommendations = result.strategy?.strategicDirections || [];
-  const recommendationHost = $('researchRecommendations');
-  if (projectId === selectedProject) {
-  recommendationHost.classList.toggle('hidden', !recommendations.length);
-  recommendationHost.innerHTML = recommendations.length ? `<small>NEXT WORK</small><h3>推奨する次のWork</h3><p>Research結果から候補を作成しました。確認したものだけProjectへ追加します。</p>${recommendations.slice(0,3).map(item => `<button data-recommended-work="${escapeHtml(item.recommendedWork)}">＋ ${escapeHtml(item.recommendedWork)}</button>`).join('')}` : '';
-  recommendationHost.querySelectorAll('[data-recommended-work]').forEach(button => { button.onclick = () => addAgent(button.dataset.recommendedWork); });
-  }
   const evidenceGaps = result.landscape?.evidenceGaps || [];
   if (evidenceGaps.length && projectId) {
     const projectName = projects.find(item => item.id === projectId)?.name || 'Project';
@@ -2230,8 +2235,20 @@ function applyResearchOutput(result, projectId = selectedProject, strict = false
   return saved;
 }
 
+function renderResearchRecommendations() {
+  const recommendations = researchOutputs[selectedProject]?.at(-1)?.strategy?.strategicDirections || [];
+  const host = $('researchRecommendations');
+  host.classList.toggle('hidden', !recommendations.length);
+  host.innerHTML = recommendations.length ? `<small>NEXT WORK</small><h3>推奨する次のWork</h3><p>Research結果から候補を作成しました。確認したものだけProjectへ追加します。</p>${recommendations.slice(0,3).map(item => `<button data-recommended-work="${escapeHtml(item.recommendedWork)}">＋ ${escapeHtml(item.recommendedWork)}</button>`).join('')}` : '';
+  const projectId = selectedProject;
+  host.querySelectorAll('[data-recommended-work]').forEach(button => { button.onclick = () => {
+    if (selectedProject === projectId) addAgent(button.dataset.recommendedWork);
+  }; });
+}
+
 function renderResearchBook() {
   const items = getActiveResearchItems();
+  renderResearchRecommendations();
   if (activeResearchIndex >= items.length) activeResearchIndex = 0;
   $('researchSections').innerHTML = items.map((item,index) => `<button class="${index === activeResearchIndex ? 'active' : ''}" data-research-section="${index}"><span>${String(index + 1).padStart(2,'0')}</span>${escapeHtml(item.title)}</button>`).join('');
   document.querySelectorAll('[data-research-section]').forEach(button => { button.onclick = () => { activeResearchIndex = Number(button.dataset.researchSection); renderResearchBook(); }; });
@@ -2264,10 +2281,16 @@ function renderResearchBook() {
 }
 
 function renderCompetitorExplorer() {
+  const host = $('competitorExplorer');
+  if (!competitorCompanies.length) {
+    host.innerHTML = '<div class="competitor-toolbar"><div><small>COMPETITOR COMPANIES</small><b>このProjectには競合情報がまだありません</b><p>Run Researchで収集するか、会社名・URLを追加してください。</p></div><button data-add-competitor>＋ Company</button></div>';
+    host.querySelector('[data-add-competitor]').onclick = addCompetitorCompany;
+    return;
+  }
   if (activeCompetitorIndex >= competitorCompanies.length) activeCompetitorIndex = 0;
   const company = competitorCompanies[activeCompetitorIndex];
+  if (activeCompetitorProductIndex >= company.products.length) activeCompetitorProductIndex = -1;
   const product = activeCompetitorProductIndex >= 0 ? company.products[activeCompetitorProductIndex] : null;
-  const host = $('competitorExplorer');
   host.innerHTML = `
     <div class="competitor-toolbar">
       <div><small>COMPANY → PRODUCT</small><b>${product ? `${escapeHtml(company.name)} / ${escapeHtml(product.name)}` : escapeHtml(company.name)}</b></div>
