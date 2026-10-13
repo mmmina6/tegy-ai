@@ -814,7 +814,7 @@ function openFullWorkspace(id) {
     brand: ['01. Brand Input','02. Identity','03. Positioning','04. Voice','05. Visual Rules','06. Brand Book'],
     manager: ['01. Project Brief','02. Work Plan','03. Dependencies','04. Approvals','05. Timeline','06. Delivery']
   };
-  const steps = stepMap[workspaceKey] || stepMap.manager;
+  const steps = (stepMap[workspaceKey] || stepMap.manager).map(step => step.replace(/^\d+\.\s*/, ''));
   $('workspaceSteps').classList.remove('hidden');
   $('workspaceSteps').innerHTML = steps.map((step,index) => `<button class="${index === 0 ? 'done' : index === 1 ? 'active' : ''}">${escapeHtml(step)}<span>${index === 0 ? '✓' : index === 1 ? 'In Progress' : 'Pending'}</span></button>`).join('');
   $('researchWorkspace').classList.toggle('hidden', workspaceKey !== 'research');
