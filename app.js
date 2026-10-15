@@ -625,7 +625,7 @@ async function openProject(id) {
   }
   const latest = outputs[id]?.at(-1);
   if (latest) updateScriptNode('Completed', 'done', latest.script.title, 100);
-  app.classList.remove('sidebar-hidden');
+  setSidebarVisible(false);
   welcome.classList.add('hidden');
   canvas.classList.remove('hidden');
   renderProjects();
@@ -643,7 +643,7 @@ async function openProject(id) {
 function showWelcome() {
   ++projectLoadSequence;
   selectedProject = null;
-  app.classList.add('sidebar-hidden');
+  setSidebarVisible(false);
   welcome.classList.remove('hidden');
   canvas.classList.add('hidden');
   closeInspector();
@@ -2673,33 +2673,16 @@ async function submitChat(event) {
   }
 }
 
-function configureSidebarMode(pinned) {
-  localStorage.setItem('tegy-sidebar-mode', pinned ? 'pinned' : 'auto');
-  app.classList.toggle('sidebar-auto', !pinned);
-  app.classList.remove('sidebar-peek','sidebar-hidden');
-  $('sidebarPin').setAttribute('aria-pressed',String(pinned));
-  $('sidebarPin').textContent=pinned ? '◆' : '◇';
-  $('sidebarPin').title=pinned ? '固定を解除して自動で隠す' : 'サイドバーを固定';
-  $('sidebarPin').setAttribute('aria-label',$('sidebarPin').title);
-  $('sidebarEdgeTrigger').setAttribute('aria-expanded',String(pinned));
+function setSidebarVisible(visible) {
+  app.classList.toggle('sidebar-hidden',!visible);
+  $('sidebar').inert=!visible;
+  $('menuButton').setAttribute('aria-expanded',String(visible));
   requestAnimationFrame(drawConnections);
 }
-let sidebarCloseTimer;
-function peekSidebar(open) {
-  clearTimeout(sidebarCloseTimer);
-  if(!app.classList.contains('sidebar-auto')) return;
-  const update=()=>{app.classList.toggle('sidebar-peek',open);$('sidebarEdgeTrigger').setAttribute('aria-expanded',String(open));};
-  if(open) update(); else sidebarCloseTimer=setTimeout(update,220);
-}
-$('sidebarPin').onclick=()=>configureSidebarMode(app.classList.contains('sidebar-auto'));
-$('sidebarEdgeTrigger').onmouseenter=()=>peekSidebar(true);
-$('sidebarEdgeTrigger').onclick=()=>peekSidebar(!app.classList.contains('sidebar-peek'));
-$('sidebarEdgeTrigger').onmouseleave=()=>peekSidebar(false);
-$('sidebar').onmouseenter=()=>peekSidebar(true);
-$('sidebar').onmouseleave=()=>peekSidebar(false);
-$('sidebar').onkeydown=event=>{if(event.key==='Escape'){peekSidebar(false);$('sidebarEdgeTrigger').focus();}};
-$('menuButton').onclick = () => app.classList.contains('sidebar-auto') ? peekSidebar(!app.classList.contains('sidebar-peek')) : app.classList.toggle('sidebar-hidden');
-configureSidebarMode(localStorage.getItem('tegy-sidebar-mode') === 'pinned' || (!localStorage.getItem('tegy-sidebar-mode') && window.innerWidth > 1440));
+$('menuButton').onclick = () => setSidebarVisible(app.classList.contains('sidebar-hidden'));
+$('menuButton').setAttribute('aria-controls','sidebar');
+$('sidebar').onkeydown=event=>{if(event.key==='Escape'){setSidebarVisible(false);$('menuButton').focus();}};
+setSidebarVisible(false);
 $('logoHome').onclick = () => { closeFullWorkspace(); closeInspector(); showWelcome(); };
 $('openGenerationMonitor').onclick = openGenerationMonitor;
 $('openProjectDelivery').onclick = openProjectDelivery;

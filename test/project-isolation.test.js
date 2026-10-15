@@ -38,6 +38,18 @@ function appHarness() {
   return { context, element, storage, run:code => vm.runInContext(code, context) };
 }
 
+test('Sidebar is explicitly opened and closed, with hidden navigation unfocusable', () => {
+  const app=appHarness();
+  app.run('setSidebarVisible(false)');
+  assert.equal(app.element('app').classList.contains('sidebar-hidden'),true);
+  assert.equal(app.element('sidebar').inert,true);
+  app.run('setSidebarVisible(true)');
+  assert.equal(app.element('app').classList.contains('sidebar-hidden'),false);
+  assert.equal(app.element('sidebar').inert,false);
+  app.run('setSidebarVisible(false)');
+  assert.equal(app.element('app').classList.contains('sidebar-hidden'),true);
+});
+
 test('Research switches Meiji → Implant → Meiji without inheriting competitors or recommendations', async () => {
   const app = appHarness();
   await app.run("openProject('imai')");
