@@ -3,8 +3,11 @@ import { parakoProject, parakoProjectDetails, parakoWorks, parakoShadowResult } 
 import { detectCoworkerIntent, workNameForIntent, coworkerConfirmation } from './src/coworker/intent-router.js';
 import { initializeAuth, resetPassword, signInWithEmail, signInWithGoogle, signOut } from './src/services/supabase-auth.js';
 import { runResearchSteps } from './src/agents/research/client-runner.js';
+import { mountAnimeCanvas } from './src/anime-canvas.js';
+import { mountVideoStudio } from './src/video-studio.js';
 
 const researchRuns = new Map();
+let unmountCreativeWorkspace = null;
 
 let signedInUser = null;
 // Keep the workspace public during the build-out. Set to true when access control launches.
@@ -802,6 +805,10 @@ function openFullWorkspace(id) {
   $('fullWorkspaceIcon').textContent = node.icon;
   $('fullWorkspaceIcon').className = `workspace-agent-icon ${node.cls}`;
   const workspaceKey = getWorkspaceKey(node);
+  if(!['animation','video'].includes(workspaceKey)) {
+    if(unmountCreativeWorkspace){unmountCreativeWorkspace();unmountCreativeWorkspace=null;}
+    $('runWorkspaceAgent').classList.remove('hidden');
+  }
   $('workTaskCount').textContent = String(tasksForCurrentContext(workspaceKey).filter(task => task.status !== 'completed').length);
   $('runWorkspaceAgent').textContent = workspaceKey === 'research' ? '↻ Run Research' : workspaceKey === 'script' ? '↻ Generate Script' : workspaceKey === 'video' ? '✓ Save Plan' : workspaceKey === 'operations' ? '↻ Sync Operations' : workspaceKey === 'manager' ? '✦ Plan Next Tasks' : '↻ Run Agent';
   const stepMap = {
@@ -970,6 +977,19 @@ function getWorkspaceKey(node) {
 }
 
 function renderDeliveryWorkspace(key, node) {
+  if(unmountCreativeWorkspace){unmountCreativeWorkspace();unmountCreativeWorkspace=null;}
+  if(key==='animation' || key==='video') {
+    $('workspaceSteps').classList.add('hidden');
+    $('runWorkspaceAgent').classList.add('hidden');
+    $('workspaceSaveStatus').textContent='UIプレビュー · 自動生成なし';
+    unmountCreativeWorkspace=(key==='animation'?mountAnimeCanvas:mountVideoStudio)($('genericWorkspace'),{
+      projectId:selectedProject,workId:node.id,
+      projectName:projects.find(project=>project.id===selectedProject)?.name,
+      scripts:outputs[selectedProject] || [],onVoice:target=>startVoiceInput(target)
+    });
+    return;
+  }
+  $('runWorkspaceAgent').classList.remove('hidden');
   const definitions = {
     script: { kicker:'SCRIPT PRODUCTION', title:'Multi-format Script Workspace', copy:'AdvertisementまたはYouTube撮影台本を生成・編集し、字コンテから絵コンテまで制作します。', nav:['Campaign Brief','Persona / Viewer','Hook Library','Script Editor','Scenes / 字コンテ','Visual Storyboard / 絵コンテ','Versions'], center:'script', insight:'Script Typeに応じて構成と撮影項目を切り替え、Project / Research Contextを共通利用します。', exports:['Export Current Section','Export Full Package'] },
     animation: { kicker:'AI ANIME PRODUCTION', title:'Script to Anime Workspace', copy:'企画・Script・画像・Animation・音声・最終Animeを、一つの制作Workで完成させます。', nav:['Creative Brief','Script','Image & Character','Storyboard','Animation','Director Review','Delivery'], center:'animation', insight:'Quick Shortは一文から一括制作。Seriesは固定Character・Location・VoiceをAsset Libraryとして継続利用します。', exports:['制作素材を書き出す','Animeを納品'] },
@@ -2034,6 +2054,7 @@ function shadowEvidenceMarkup(result) {
 }
 
 function closeFullWorkspace() {
+  if(unmountCreativeWorkspace){unmountCreativeWorkspace();unmountCreativeWorkspace=null;}
   activeWorkspaceNodeId = null;
   fullWorkspace.classList.add('hidden');
   $('myTasksLauncher').classList.remove('hidden');

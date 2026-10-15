@@ -9,6 +9,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./anime-canvas.css" />
+  <link rel="stylesheet" href="./video-studio.css" />
 </head>
 <body class="auth-pending">
   <section class="auth-gate" id="authGate" aria-live="polite">
@@ -19,12 +21,12 @@
       <p class="auth-intro">会社メールアドレスでログインしてください。アカウントはTEGY管理者が発行します。</p>
       <button class="google-signin hidden" id="authGoogle" type="button" aria-hidden="true" tabindex="-1"><span>G</span>Google で続行</button>
       <form id="authEmailForm">
-        <label>会社メールアドレス<input id="authEmail" type="email" autocomplete="email" required placeholder="name@tegy.co.jp" /></label>
+        <label>メールアドレス<input id="authEmail" type="email" autocomplete="email" required placeholder="info@tegy.co.jp" /></label>
         <label>パスワード<input id="authPassword" type="password" autocomplete="current-password" minlength="6" required placeholder="6文字以上" /></label>
         <button class="auth-submit" id="authSubmit" type="submit">ログイン</button>
       </form>
       <button class="auth-link" id="authReset" type="button">パスワードを忘れた場合</button>
-      <p class="auth-access-note">個人メールアドレスではログインできません。</p>
+      <p class="auth-access-note">管理者が招待したアカウントのみ利用できます。管理窓口：info@tegy.co.jp</p>
       <p class="auth-message" id="authMessage" role="status"></p>
     </div>
   </section>
