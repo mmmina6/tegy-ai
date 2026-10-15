@@ -1,4 +1,5 @@
 import {scriptScenes} from './anime-canvas.js';
+import {durationControl} from './duration-control.js';
 
 // A focused production window, deliberately separate from Anime's free canvas.
 export function mountVideoStudio(root,{projectId,workId,projectName,scripts=[]}){
@@ -35,7 +36,8 @@ export function mountVideoStudio(root,{projectId,workId,projectName,scripts=[]})
   select('モデル','model',['自動・低コスト優先（未接続）','Wan（接続予定）','Seedance（接続予定）']);
   const ratio=select('サイズ','ratio',['9:16','16:9','1:1']);
   select('解像度','resolution',['480P','720P','1080P']);
-  select('長さ','duration',['5秒','8秒','10秒']);
+  const duration=durationControl({label:'動画の長さ（最大10秒）',value:parseFloat(draft.duration) || 5,max:10,onChange:value=>{draft.duration=value+'秒';saveDraft();}});
+  options.append(duration.element);draft.duration=duration.value;
   const modeSelect=el('select');modeSelect.setAttribute('aria-label','動画の制作方法');for(const value of ['画像から動画','テキストから動画','動画を参考に']){const option=el('option','',value);modeSelect.append(option);}modeSelect.value=draft.mode;modeSelect.onchange=()=>{draft.mode=modeSelect.value;renderMode();saveDraft();};tabs.replaceChildren(modeSelect);options.prepend(tabs);
   const footer=el('footer','video-studio-footer');const saved=el('span','','UIプレビュー · 自動生成なし');const submit=el('button','primary','↑');submit.type='submit';submit.title='制作プランを保存（生成なし）';submit.setAttribute('aria-label',submit.title);footer.append(options,saved,submit);form.append(footer);
   const result=el('section','video-studio-result');result.hidden=true;studio.append(result);

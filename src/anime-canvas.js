@@ -1,10 +1,12 @@
+import {durationControl} from './duration-control.js';
+
 export function scriptScenes(result) {
   const scenes=result?.script?.scenes || result?.scenes || [];
   return scenes.map((scene,index)=>({title:scene.title || `Scene ${index+1}`,visual:scene.visual || scene.description || '',narration:scene.narration || scene.dialogue || '',seconds:String(scene.seconds || scene.duration || '')}));
 }
 
 // Interaction preview: scoped by Project AND Work. It never calls a model API.
-export function mountAnimeCanvas(root,{projectId,workId,projectName,scripts=[],onVoice=()=>{}}) {
+export function mountAnimeCanvas(root,{projectId,workId,projectName,scripts=[]}) {
   const key=`tegy-anime-canvas-preview:${projectId}:${workId}`;
   let state;
   try{state=JSON.parse(localStorage.getItem(key) || 'null');}catch{}
@@ -31,6 +33,8 @@ export function mountAnimeCanvas(root,{projectId,workId,projectName,scripts=[],o
   const file=el('input');file.type='file';file.hidden=true;file.multiple=true;file.accept='image/*,video/*';shell.append(file);
   function upload(kind,card=null){uploadTarget=card;file.accept=kind==='image'?'image/*':kind==='video'?'video/*':'image/*,video/*';file.click();}
   tools.append(button('＋ 追加',()=>{active=null;dock.hidden=true;empty.hidden=!empty.hidden;}),button('整列',arrange),saveLabel);
+  const totalDuration=durationControl({label:'作品全体の目標（最大90秒）',value:state.totalSeconds || 30,max:90,onChange:value=>{state.totalSeconds=value;save();}});
+  tools.prepend(totalDuration.element);
   actions.append(button('Scriptを取り込む',chooseScript),button('↑ 素材をアップロード',()=>upload('all')),button('▧ 画像を生成',()=>{active=null;openSettings('image');}),button('▷ 動画を生成',()=>{active=null;openSettings('video');}));
   const composer=el('form','anime-canvas-composer');composer.hidden=true;
   const prompt=el('textarea');prompt.rows=2;prompt.setAttribute('aria-label','選択した素材への演出指示');
@@ -39,8 +43,9 @@ export function mountAnimeCanvas(root,{projectId,workId,projectName,scripts=[],o
   const style=selectField('画風',['元の画風を保つ','2D Anime','Japanese Line Manga','Cinematic 3D','Chibi / SD']);
   const template=selectField('演出テンプレート',['自然な動き','ゆっくりズーム','横にパン','表情の変化','自由に指定']);
   const ratio=selectField('サイズ',['元の比率','9:16','16:9','1:1']);
-  const seconds=selectField('長さ',['5秒','8秒','10秒']);
-  const entry=el('div','anime-canvas-prompt-entry');entry.append(prompt,button('🎙',()=>onVoice(prompt),'voice'));composer.append(entry);
+  const seconds=durationControl({label:'このショットの長さ（最大10秒）',value:5,max:10});
+  settings.append(seconds.element);
+  const entry=el('div','anime-canvas-prompt-entry');entry.append(prompt);composer.append(entry);
   const submit=Object.assign(el('button','primary','制作プランを画布に追加 →'),{type:'submit'});composer.append(el('small','anime-canvas-preview-only','UI確認用：生成は実行せず、設定した制作プランを追加します。'),submit);dock.append(composer);
   function selectCard(card){active=card;operation=null;composer.hidden=true;dock.hidden=false;refreshSelection();renderContext();}
   function refreshSelection(){for(const node of plane.querySelectorAll('[data-card-id]'))node.classList.toggle('selected',node.dataset.cardId===active?.id);}
@@ -61,7 +66,7 @@ export function mountAnimeCanvas(root,{projectId,workId,projectName,scripts=[],o
     submit.disabled=missing;
     prompt.value=active?.plan?.prompt || '';
     prompt.placeholder=action==='image-to-video'?'例：人物がゆっくり顔を上げる。カメラは固定。':action==='scene-image'?'Scriptの内容を補足する演出・構図を指定…':'作りたい画面や変更したい点を指定…';
-    seconds.parentElement.hidden=!action.includes('video');
+    seconds.element.hidden=!action.includes('video');
     if(missing)contextActions.append(el('small','anime-canvas-missing','先に参照素材を選択してください。'),button('素材を選ぶ',()=>upload(needsVideo?'video':'image',active)));
     status.textContent=missing?'参照ファイルが必要です。素材を選ぶと設定を進められます。':'画風・テンプレート・サイズを確認して、制作プランを追加できます。';
   }
